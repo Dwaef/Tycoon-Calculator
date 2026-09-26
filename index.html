@@ -892,6 +892,20 @@ body.overlay #pin .todo {
 	display: none;
 }
 
+.card .progress {
+	margin: 7px 0 0 35px;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--asphalt-3);
+	overflow: hidden;
+}
+
+.card .progress span {
+	display: block;
+	height: 100%;
+	background: var(--go);
+}
+
 		</style>
 	</head>
 	<body>
@@ -947,7 +961,7 @@ body.overlay #pin .todo {
 						<label class="toggle"><input type="checkbox" data-setting="optimal" /><span>Leave room for products in each trunk</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="useHM" /><span>Use the biggest batch option (x10, x20…)</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="autoPlan" /><span>Re-plan when a chest updates</span></label>
-						<button class="btn" id="resetProgress">Clear step progress</button>
+						<button class="btn" id="resetProgress" title="Counts progress from the plan as it is now">Restart progress count</button>
 					</div>
 				</details>
 
@@ -964,7 +978,7 @@ body.overlay #pin .todo {
 							<button class="btn" id="takeBtn">Take max into trunks</button>
 							<button class="btn" id="dumpBtn">Empty trunks</button>
 						</div>
-						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”, including one to mark the pinned step done and pin the next.</p>
+						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”, including one to pin the next step.</p>
 					</div>
 				</details>
 
@@ -1947,8 +1961,9 @@ const S = {
 	sdOwned: store.get('sdOwned', {}),
 	storages: new Map(),
 	pinned: store.get('pinned', null),
-	done: new Set(store.get('done', [])),
+	baseline: store.get('baseline', null),
 	order: [],
+	cols: [],
 	hovered: null,
 	fitPending: true,
 	game: {},
@@ -2040,7 +2055,7 @@ function onGameData(data) {
 			if (action === 'load') loadPinned();
 			if (action === 'dump') dumpTrunks();
 			if (action === 'take') takeMax();
-			if (action === 'next') completePinned();
+			if (action === 'next') stepPin(1);
 		}
 	}
 
@@ -2180,7 +2195,26 @@ function replan() {
 		? solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] })
 		: { nodes: [], edges: [], surplus: new Map() };
 
-	if (S.pinned && !S.result.nodes.some((n) => n.key === S.pinned)) setPinned(null);
+	S.cols = S.result.nodes.length ? layoutColumns(S.result) : [];
+	const prevOrder = S.order;
+	S.order = [];
+	for (const col of S.cols) for (const n of col) if (n.kind === 'recipe') S.order.push(n.key);
+	updateBaseline();
+
+	// A pinned step that has dropped out of the plan is genuinely finished:
+	// its products are now in storage. Move on to the next step.
+	if (S.pinned && !S.result.nodes.some((n) => n.key === S.pinned)) {
+		const finished = S.pinned;
+		const wasRecipe = finished.startsWith('recipe:');
+		const after = prevOrder.slice(prevOrder.indexOf(finished) + 1).find((k) => S.order.includes(k));
+		const next = after || S.order[0] || null;
+		setPinned(next);
+		if (wasRecipe) {
+			const name = finished.split('::').pop();
+			notify(next ? `${name} finished. Next: ${pinnedNode().recipe.name}` : `${name} finished. All steps done.`);
+			log(`${name} finished.`);
+		}
+	}
 
 	const totals = planTotals(S.result, S.vehicles, S.settings.optimal);
 	$('#statRuns').textContent = fmt(totals.runs);
@@ -2268,8 +2302,6 @@ function cardFor(n) {
 
 	const r = n.recipe;
 	const num = stepNumber(n.key);
-	const done = S.done.has(n.key);
-	if (done) classes.push('done');
 	if (n.target) classes.push('final');
 	if (!r.ins.length) classes.push('pickup');
 	const card = h('div', { class: classes.join(' '), 'data-key': n.key });
@@ -2279,7 +2311,7 @@ function cardFor(n) {
 		h(
 			'div',
 			{ class: 'head' },
-			h('span', { class: 'step', text: done ? '✓' : String(num) }),
+			h('span', { class: 'step', text: String(num) }),
 			h('div', { class: 'titles' }, h('div', { class: 'where', text: locShort(r.loc) }, r.sd ? h('span', { class: 'sd-tag', title: 'SD card: ' + r.sd, text: 'SD' }) : null), h('div', { class: 'what', text: r.name })),
 			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs}×` : '!' , title: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'Too heavy for your vehicles' })
 		)
@@ -2291,6 +2323,11 @@ function cardFor(n) {
 	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
 	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
 	card.append(list);
+	const planned = S.baseline?.steps[n.key] || 0;
+	if (planned > n.crafts) {
+		const pct = Math.round(((planned - n.crafts) / planned) * 100);
+		card.append(h('div', { class: 'progress', title: `${fmt(planned - n.crafts)} of ${fmt(planned)} crafts already done` }, h('span', { style: `width:${pct}%` })));
+	}
 	return card;
 }
 
@@ -2302,14 +2339,10 @@ function renderGraph() {
 	svg.textContent = '';
 	const result = S.result;
 	$('#empty').hidden = !!(result && result.nodes.length);
-	S.order = [];
 	if (!result || !result.nodes.length) return renderProgress();
-
-	const cols = layoutColumns(result);
 	// Step numbers follow the columns left to right, top to bottom, which is
 	// always an order where every step's inputs come earlier.
-	for (const col of cols) for (const n of col) if (n.kind === 'recipe') S.order.push(n.key);
-	for (const col of cols) columns.append(h('div', { class: 'col' }, col.map(cardFor)));
+	for (const col of S.cols) columns.append(h('div', { class: 'col' }, col.map(cardFor)));
 	renderProgress();
 	requestAnimationFrame(() => {
 		if (S.fitPending) {
@@ -2325,13 +2358,30 @@ function stepNumber(key) {
 }
 
 function nextKey() {
-	return S.order.find((k) => !S.done.has(k)) || null;
+	return S.order[0] || null;
+}
+
+// The baseline is the plan as it stood when you chose what to make. Steps
+// that later drop out of the plan, because their products are now stored,
+// count as finished.
+function targetsKey() {
+	return JSON.stringify(S.targets);
+}
+
+function updateBaseline() {
+	const key = targetsKey();
+	if (!S.baseline || S.baseline.key !== key) S.baseline = { key, steps: {} };
+	for (const n of S.result.nodes) {
+		if (n.kind !== 'recipe') continue;
+		S.baseline.steps[n.key] = Math.max(S.baseline.steps[n.key] || 0, n.crafts);
+	}
+	store.set('baseline', S.baseline);
 }
 
 function renderProgress() {
-	const total = S.order.length;
-	const done = S.order.filter((k) => S.done.has(k)).length;
-	$('#statSteps').textContent = total ? `${done}/${total}` : '0';
+	const all = Object.keys(S.baseline?.steps || {});
+	const done = all.filter((k) => !S.order.includes(k)).length;
+	$('#statSteps').textContent = all.length ? `${done}/${all.length}` : '0';
 	const next = nextKey();
 	document.querySelectorAll('.card.next').forEach((c) => c.classList.remove('next'));
 	if (next) document.querySelector(`.card[data-key="${CSS.escape(next)}"]`)?.classList.add('next');
@@ -2474,36 +2524,17 @@ function setupPanZoom() {
 }
 
 // ---------- Progress ----------
-function setDone(key, done) {
-	if (done) S.done.add(key);
-	else S.done.delete(key);
-	store.set('done', [...S.done]);
-	const card = document.querySelector(`.card[data-key="${CSS.escape(key)}"]`);
-	if (card) {
-		card.classList.toggle('done', done);
-		const num = card.querySelector('.step');
-		if (num) num.textContent = done ? '✓' : String(stepNumber(key));
-	}
-	renderProgress();
-}
-
-// Mark the pinned step done and move the pin to the next step.
-function completePinned() {
-	const n = pinnedNode();
-	if (!n || n.kind !== 'recipe') {
-		const next = nextKey();
-		if (next) setPinned(next);
-		return;
-	}
-	setDone(n.key, true);
-	const next = nextKey();
-	setPinned(next);
-	notify(next ? 'Next: ' + pinnedNode().recipe.name : 'All steps done.');
+// Move the pin forwards or backwards through the steps (never marks anything).
+function stepPin(dir) {
+	if (!S.order.length) return;
+	const i = S.order.indexOf(S.pinned);
+	const j = i === -1 ? 0 : Math.min(S.order.length - 1, Math.max(0, i + dir));
+	setPinned(S.order[j]);
 }
 
 function resetProgress(rerender = true) {
-	S.done.clear();
-	store.set('done', []);
+	S.baseline = null;
+	store.set('baseline', null);
 	S.fitPending = true;
 	if (rerender) replan();
 }
@@ -2540,7 +2571,7 @@ function renderPin() {
 				h('li', { text: 'Click a step on the route to pin it. Start with the one marked next, or whichever step you are on.' }),
 				h('li', { text: 'At a storage, open its menu and press “Load this run”. The planner takes the right amounts into each trunk.' }),
 				h('li', { text: 'Drive to the step’s location and open its menu. With auto-select on, the recipe is picked for you.' }),
-				h('li', { text: 'Press “Done, next step” to pin the following step.' })
+				h('li', { text: 'When a step’s items reach your storages it finishes by itself and the next step is pinned. Use Next and Previous to work in any order.' })
 			),
 			h('p', { class: 'hint', text: 'The plan uses what is in your storages, so steps you have already finished shrink or disappear once those chests update.' })
 		);
@@ -2620,14 +2651,15 @@ function renderPin() {
 			)
 		);
 	}
+	const idx = S.order.indexOf(n.key);
 	box.append(
 		h(
 			'div',
 			{ class: 'pin-actions finish' },
-			S.done.has(n.key)
-				? h('button', { class: 'btn', text: 'Mark not done', onclick: () => (setDone(n.key, false), renderPin()) })
-				: h('button', { class: 'btn done-btn', text: 'Done, next step', onclick: completePinned })
-		)
+			h('button', { class: 'btn', text: '‹ Previous', disabled: idx <= 0, onclick: () => stepPin(-1) }),
+			h('button', { class: 'btn', text: 'Next step ›', disabled: idx === -1 || idx >= S.order.length - 1, onclick: () => stepPin(1) })
+		),
+		h('p', { class: 'hint', text: 'This step finishes by itself once its items show up in your storages.' })
 	);
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
 	box.append(...flowLists(n));
@@ -3094,7 +3126,7 @@ function init() {
 		send('registerTrigger', { trigger: TRIGGERS.load, name: 'Haul Planner: load this run' });
 		send('registerTrigger', { trigger: TRIGGERS.dump, name: 'Haul Planner: empty trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
-		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: step done, pin next' });
+		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: pin next step' });
 	}, 250);
 	setTimeout(() => (S.triggersArmed = true), 2000);
 }
