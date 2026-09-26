@@ -1,0 +1,2628 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Haul Planner</title>
+		<style>
+:root {
+	--asphalt: #1c2226;
+	--asphalt-2: #242b30;
+	--asphalt-3: #2e363c;
+	--line: #3b454c;
+	--paint: #ebe6da;
+	--muted: #98a2a8;
+	--amber: #f2a900;
+	--amber-ink: #231a00;
+	--go: #49a86f;
+	--stop: #e0584f;
+	--font: 'Bahnschrift', 'DIN Alternate', 'Roboto Condensed', 'Arial Narrow', 'Segoe UI', sans-serif;
+	--radius-panel: 8px;
+	--radius-control: 5px;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	background: transparent;
+	color: var(--paint);
+	font: 14px/1.35 var(--font);
+	font-variant-numeric: tabular-nums;
+	user-select: none;
+}
+
+body:not(.in-game) {
+	background: #111518;
+}
+
+button,
+input,
+select {
+	font: inherit;
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--amber);
+	outline-offset: 1px;
+}
+
+/* ---------- App frame ---------- */
+
+#app {
+	position: fixed;
+	inset: 12px;
+	display: grid;
+	grid-template-columns: 330px 1fr;
+	grid-template-rows: auto 1fr;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-panel);
+	background: var(--asphalt);
+	overflow: hidden;
+	box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+body.sidebar-hidden #app {
+	grid-template-columns: 0 1fr;
+}
+
+body.overlay #app {
+	display: none;
+}
+
+/* ---------- Toolbar ---------- */
+
+#toolbar {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	background: var(--asphalt-2);
+	border-bottom: 1px solid var(--line);
+}
+
+#toolbar h1 {
+	margin: 0 10px 0 4px;
+	font-size: 17px;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+	white-space: nowrap;
+}
+
+#toolbar h1 span {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	margin-right: 8px;
+	background: var(--amber);
+	transform: rotate(45deg);
+}
+
+.stats {
+	display: flex;
+	gap: 18px;
+	margin-left: auto;
+	margin-right: 8px;
+	white-space: nowrap;
+}
+
+.stats div {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+.stats small {
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.stats b {
+	font-size: 15px;
+}
+
+.stats .earn {
+	color: var(--go);
+}
+
+.stats .spend {
+	color: var(--stop);
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+	padding: 6px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-control);
+	background: var(--asphalt-3);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.btn:hover {
+	border-color: var(--muted);
+}
+
+.btn.primary {
+	background: var(--amber);
+	border-color: var(--amber);
+	color: var(--amber-ink);
+	font-weight: 700;
+}
+
+.btn.primary:hover {
+	filter: brightness(1.08);
+}
+
+.btn.danger {
+	color: var(--stop);
+}
+
+.btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.btn.icon {
+	padding: 6px 9px;
+}
+
+/* ---------- Sidebar ---------- */
+
+#sidebar {
+	overflow-y: auto;
+	border-right: 1px solid var(--line);
+	background: var(--asphalt-2);
+}
+
+#sidebar details {
+	border-bottom: 1px solid var(--line);
+}
+
+#sidebar summary {
+	padding: 10px 14px;
+	font-weight: 700;
+	cursor: pointer;
+	list-style: none;
+	display: flex;
+	justify-content: space-between;
+}
+
+#sidebar summary::after {
+	content: '+';
+	color: var(--muted);
+}
+
+#sidebar details[open] summary::after {
+	content: '–';
+}
+
+.section {
+	padding: 0 14px 14px;
+	display: grid;
+	gap: 8px;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.row > label {
+	flex: 1;
+	color: var(--muted);
+}
+
+.hint {
+	margin: 0;
+	color: var(--muted);
+	font-size: 12.5px;
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+select {
+	min-width: 0;
+	padding: 5px 8px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-control);
+	background: var(--asphalt);
+}
+
+input[type='number'] {
+	width: 84px;
+	text-align: right;
+}
+
+input[type='checkbox'] {
+	width: 16px;
+	height: 16px;
+	accent-color: var(--amber);
+}
+
+.toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+}
+
+.toggle span {
+	flex: 1;
+}
+
+.toggle.sub {
+	padding-left: 24px;
+}
+
+.target {
+	display: grid;
+	grid-template-columns: 1fr 84px 28px;
+	gap: 6px;
+	align-items: center;
+}
+
+.target select {
+	width: 100%;
+}
+
+.x {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--muted);
+	cursor: pointer;
+	font-size: 18px;
+}
+
+.x:hover {
+	color: var(--stop);
+}
+
+#log {
+	max-height: 180px;
+	overflow-y: auto;
+	margin: 0;
+	padding: 8px;
+	border-radius: var(--radius-control);
+	background: var(--asphalt);
+	font-size: 12px;
+	color: var(--muted);
+	white-space: pre-wrap;
+	user-select: text;
+}
+
+#log .warn {
+	color: var(--amber);
+}
+
+#log .error {
+	color: var(--stop);
+}
+
+/* ---------- Route canvas ---------- */
+
+#viewport {
+	position: relative;
+	overflow: hidden;
+	cursor: grab;
+	background-color: var(--asphalt);
+	background-image: radial-gradient(rgba(235, 230, 218, 0.07) 1px, transparent 1px);
+	background-size: 22px 22px;
+}
+
+#viewport.dragging {
+	cursor: grabbing;
+}
+
+#canvas {
+	position: absolute;
+	left: 0;
+	top: 0;
+	transform-origin: 0 0;
+}
+
+#edges {
+	position: absolute;
+	left: 0;
+	top: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+
+#edges path {
+	fill: none;
+	stroke-width: 2;
+	opacity: 0.75;
+}
+
+#edges text {
+	font: 11px var(--font);
+	fill: var(--paint);
+	paint-order: stroke;
+	stroke: var(--asphalt);
+	stroke-width: 4px;
+	stroke-linejoin: round;
+}
+
+#columns {
+	display: flex;
+	gap: 110px;
+	align-items: flex-start;
+	padding: 20px;
+}
+
+.col {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.empty {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-content: center;
+	text-align: center;
+	color: var(--muted);
+	padding: 20px;
+	pointer-events: none;
+}
+
+.empty[hidden] {
+	display: none;
+}
+
+.empty b {
+	display: block;
+	color: var(--paint);
+	font-size: 17px;
+	margin-bottom: 4px;
+}
+
+/* ---------- Route cards ---------- */
+
+.card {
+	position: relative;
+	width: 230px;
+	padding: 9px 11px 10px 15px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--asphalt-2);
+	cursor: pointer;
+}
+
+.card::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 5px;
+	border-radius: 6px 0 0 6px;
+	background: var(--stripe, var(--muted));
+}
+
+.card:hover {
+	border-color: var(--muted);
+}
+
+.card.pinned {
+	border-color: var(--amber);
+	box-shadow: 0 0 0 2px var(--amber);
+}
+
+.card .where {
+	color: var(--muted);
+	font-size: 12px;
+	padding-right: 58px;
+}
+
+.card .what {
+	font-weight: 700;
+	font-size: 15px;
+	padding-right: 58px;
+}
+
+.plate {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	padding: 2px 7px;
+	border-radius: 3px;
+	background: var(--amber);
+	color: var(--amber-ink);
+	font-weight: 700;
+	font-size: 12px;
+	border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.card ul {
+	margin: 6px 0 0;
+	padding: 6px 0 0;
+	list-style: none;
+	border-top: 1px dashed var(--line);
+	font-size: 12.5px;
+}
+
+.card li {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.card li span:first-child {
+	color: var(--muted);
+}
+
+.card.missing {
+	--stripe: var(--stop);
+}
+
+.card.storage {
+	--stripe: var(--go);
+}
+
+.card.target {
+	--stripe: var(--amber);
+}
+
+.money-in {
+	color: var(--go);
+}
+
+.money-out {
+	color: var(--stop);
+}
+
+/* ---------- Pinned panel ---------- */
+
+#pin {
+	position: fixed;
+	right: 24px;
+	bottom: 24px;
+	width: 320px;
+	max-height: 70vh;
+	overflow-y: auto;
+	padding: 12px 14px 14px 18px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-panel);
+	background: var(--asphalt-2);
+	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+	z-index: 20;
+}
+
+#pin::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 6px;
+	border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+	background: var(--stripe, var(--amber));
+}
+
+#pin[hidden] {
+	display: none;
+}
+
+body.overlay #pin {
+	top: 12px;
+	bottom: auto;
+	right: 12px;
+	width: 280px;
+}
+
+body.overlay #pin .pin-actions,
+body.overlay #pin .pin-close {
+	display: none;
+}
+
+#pin h2 {
+	margin: 0;
+	font-size: 17px;
+	padding-right: 28px;
+}
+
+#pin .where {
+	color: var(--muted);
+	font-size: 12.5px;
+}
+
+.pin-close {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+}
+
+.pin-meta {
+	display: flex;
+	gap: 14px;
+	margin: 8px 0;
+}
+
+.pin-meta div {
+	display: flex;
+	flex-direction: column;
+}
+
+.pin-meta small {
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.pin-meta b {
+	font-size: 16px;
+}
+
+.load {
+	margin: 0 0 8px;
+	padding: 8px 10px;
+	border-radius: var(--radius-control);
+	background: var(--asphalt);
+}
+
+.load h3 {
+	margin: 0 0 4px;
+	font-size: 13px;
+}
+
+.load li {
+	display: flex;
+	justify-content: space-between;
+	font-size: 13px;
+}
+
+.load ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.path {
+	font-size: 12.5px;
+	color: var(--muted);
+	margin: 0 0 10px;
+}
+
+.pin-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.busy {
+	margin-top: 8px;
+	color: var(--amber);
+	font-size: 12.5px;
+}
+
+/* ---------- Modals ---------- */
+
+.modal {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	background: rgba(0, 0, 0, 0.6);
+	z-index: 50;
+}
+
+.modal[hidden] {
+	display: none;
+}
+
+.sheet {
+	width: min(760px, 92vw);
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-panel);
+	background: var(--asphalt-2);
+	overflow: hidden;
+}
+
+.sheet header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	border-bottom: 1px solid var(--line);
+}
+
+.sheet header h2 {
+	margin: 0;
+	font-size: 17px;
+	flex: 1;
+}
+
+.sheet .body {
+	overflow-y: auto;
+	padding: 12px 14px;
+}
+
+.group {
+	margin-bottom: 14px;
+}
+
+.group h3 {
+	margin: 0 0 6px;
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex: none;
+}
+
+.line-item {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 10px;
+	align-items: center;
+	padding: 6px 8px;
+	border-radius: var(--radius-control);
+}
+
+.line-item:nth-child(even) {
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.line-item small {
+	display: block;
+	color: var(--muted);
+}
+
+.items {
+	columns: 2;
+	column-gap: 20px;
+	font-size: 13px;
+	padding: 4px 8px 0;
+}
+
+.items div {
+	display: flex;
+	justify-content: space-between;
+	break-inside: avoid;
+}
+
+.items span:first-child {
+	color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		transition: none !important;
+	}
+}
+
+		</style>
+	</head>
+	<body>
+		<div id="app">
+			<header id="toolbar">
+				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
+				<h1><span></span>Haul Planner</h1>
+				<button class="btn" id="openStorages">Storages</button>
+				<button class="btn" id="openRecipes">Recipes</button>
+				<button class="btn primary" id="refresh" title="Reads all your storages from the TT API (4 requests)">Refresh storages</button>
+				<div class="stats">
+					<div><small>Runs</small><b id="statRuns">0</b></div>
+					<div><small>Spend</small><b class="spend" id="statCost">$0</b></div>
+					<div><small>Earn</small><b class="earn" id="statRevenue">$0</b></div>
+				</div>
+			</header>
+
+			<aside id="sidebar">
+				<details open>
+					<summary>What to make</summary>
+					<div class="section">
+						<div id="targets"></div>
+						<button class="btn" id="addTarget">Add item</button>
+						<label class="toggle"><input type="checkbox" data-setting="sell" /><span>Sell at the end when possible</span></label>
+					</div>
+				</details>
+
+				<details open>
+					<summary>Vehicles</summary>
+					<div class="section">
+						<label class="toggle"><input type="checkbox" data-setting="cab" /><span>MK15 cab (6,000 kg)</span></label>
+						<div class="row"><label for="trailer">Trailer</label><select id="trailer" data-setting="trailer"></select></div>
+						<label class="toggle"><input type="checkbox" data-setting="useInventory" /><span>Carry in inventory too</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="premium" /><span>Premium (+15%)</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="milk" /><span>Farmer's Milk</span></label>
+						<div class="row">
+							<label for="perk">Perk</label>
+							<select id="perk" data-setting="perk">
+								<option value="none">None</option>
+								<option value="postop">PostOP (+15% trunks)</option>
+								<option value="strength">Strength (+100% inventory)</option>
+							</select>
+						</div>
+					</div>
+				</details>
+
+				<details>
+					<summary>Planning</summary>
+					<div class="section">
+						<label class="toggle"><input type="checkbox" data-setting="useStorages" /><span>Use items I already have</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="optimal" /><span>Leave room for products in each trunk</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="useHM" /><span>Use the biggest batch option (x10, x20…)</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="autoPlan" /><span>Re-plan when a chest updates</span></label>
+					</div>
+				</details>
+
+				<details>
+					<summary>Automation</summary>
+					<div class="section">
+						<p class="hint">Everything here waits for you: loading runs when you press its button or keybind at a storage, and auto-recipe fires once each time you open a location's menu.</p>
+						<label class="toggle"><input type="checkbox" data-setting="automation" /><span>Enable automation</span></label>
+						<label class="toggle sub"><input type="checkbox" data-setting="dumpFirst" /><span>Empty trunks before loading</span></label>
+						<label class="toggle sub"><input type="checkbox" data-setting="autoRecipe" /><span>Auto-select the pinned recipe</span></label>
+						<label class="toggle sub"><input type="checkbox" data-setting="autoTrunk" /><span>Open the right trunk when inventory is full</span></label>
+						<div class="row"><label for="takeItem">Take item</label><select id="takeItem" data-setting="takeItem"></select></div>
+						<div class="row">
+							<button class="btn" id="takeBtn">Take max into trunks</button>
+							<button class="btn" id="dumpBtn">Empty trunks</button>
+						</div>
+						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”.</p>
+					</div>
+				</details>
+
+				<details>
+					<summary>TT API</summary>
+					<div class="section">
+						<p class="hint">Only needed for Refresh. Each refresh uses 4 charges on your key. After that, opening a chest in-game updates it for free.</p>
+						<div class="row"><label for="apiKey">API key</label><input type="password" id="apiKey" data-setting="apiKey" autocomplete="off" /></div>
+						<div class="row"><label for="userId">User ID</label><input type="text" id="userId" data-setting="userId" placeholder="From game" /></div>
+						<label class="toggle"><input type="checkbox" data-setting="altApi" /><span>Use ttstats.eu mirror (sends your key to a third party)</span></label>
+					</div>
+				</details>
+
+				<details>
+					<summary>Activity</summary>
+					<div class="section">
+						<pre id="log"></pre>
+						<button class="btn danger" id="resetAll">Reset everything</button>
+					</div>
+				</details>
+			</aside>
+
+			<main id="viewport">
+				<div id="canvas">
+					<svg id="edges"></svg>
+					<div id="columns"></div>
+				</div>
+				<div class="empty" id="empty"><div><b>Nothing planned yet</b>Add an item under “What to make” and the route appears here.</div></div>
+			</main>
+		</div>
+
+		<section id="pin" hidden></section>
+
+		<div class="modal" id="storagesModal" hidden>
+			<div class="sheet">
+				<header>
+					<h2>Storages</h2>
+					<input type="text" id="storageSearch" placeholder="Find an item" />
+					<button class="btn" data-close>Close</button>
+				</header>
+				<div class="body" id="storageList"></div>
+			</div>
+		</div>
+
+		<div class="modal" id="recipesModal" hidden>
+			<div class="sheet">
+				<header>
+					<h2>Recipes</h2>
+					<input type="text" id="recipeSearch" placeholder="Find a recipe, item or place" />
+					<button class="btn" id="resetPrio">Reset priorities</button>
+					<button class="btn" data-close>Close</button>
+				</header>
+				<div class="body">
+					<p class="hint">When several recipes make the same item, the planner uses the one with the highest priority. Recipes and prices were checked against the TT wiki on 26 Sep 2026.</p>
+					<div id="recipeList"></div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+(() => {
+'use strict';
+// ===== Game data =====
+// Factual game data (item weights, menu names, recipes, menu paths).
+// Menu paths and names must match the in-game vRP menu text exactly.
+
+const ITEMS = {};
+function item(id, name, w, vrp) {
+	ITEMS[id] = { id, name, w, vrp: vrp || name };
+}
+function cargo(id, name, w) {
+	item(id, name, w, 'Truck Cargo: ' + name);
+}
+
+// Truck cargo
+cargo('scrap_acid', 'Acid', 5);
+cargo('crafted_batteries', 'Batteries', 30);
+cargo('crafted_cardboard', 'Cardboard', 10);
+cargo('crafted_cement', 'Cement Mix', 25);
+cargo('crafted_ceramictiles', 'Ceramic Tiles', 10);
+cargo('crafted_circuit', 'Circuit Boards', 20);
+cargo('crafted_computer', 'Computers', 35);
+cargo('crafted_concrete', 'Concrete', 160);
+cargo('crafted_copperwire', 'Copper Wire Spool', 20);
+cargo('tcargosmall', 'Erasers', 3);
+cargo('crafted_fiberglass', 'Fiberglass Spool', 20);
+cargo('refined_flint', 'Flint', 5);
+cargo('refined_glass', 'Glass', 5);
+cargo('scrap_gravel', 'Gravel', 5);
+cargo('tcargologs', 'Logs', 60);
+cargo('refined_planks', 'Planks', 15);
+cargo('recycled_rubble', 'Quarry Rubble', 150);
+cargo('scrap_emerald', 'Raw Emeralds', 10);
+cargo('scrap_ore', 'Raw Ore Mix', 15);
+cargo('crafted_rebar', 'Rebar', 45);
+cargo('recycled_electronics', 'Recycled Electronics', 130);
+cargo('recycled_trash', 'Recycled Trash', 90);
+cargo('refined_aluminum', 'Refined Aluminum', 10);
+cargo('refined_amalgam', 'Refined Amalgam', 15);
+cargo('refined_bronze', 'Refined Bronze Alloy', 10);
+cargo('refined_copper', 'Refined Copper', 10);
+cargo('refined_gold', 'Refined Gold', 20);
+cargo('refined_solder', 'Refined Solder', 5);
+cargo('refined_tin', 'Refined Tin', 10);
+cargo('refined_zinc', 'Refined Zinc', 10);
+cargo('refined_sand', 'Sand', 5);
+cargo('tcargodust', 'Sawdust', 3);
+cargo('scrap_aluminum', 'Scrap Aluminum', 5);
+cargo('scrap_copper', 'Scrap Copper', 5);
+cargo('scrap_gold', 'Scrap Gold', 10);
+cargo('scrap_lead', 'Scrap Lead', 15);
+cargo('scrap_mercury', 'Scrap Mercury', 15);
+cargo('scrap_plastic', 'Scrap Plastic', 5);
+cargo('scrap_tin', 'Scrap Tin', 5);
+cargo('pucargosmall', 'Tools', 1);
+cargo('recycled_waste', 'Toxic Waste', 110);
+cargo('liquid_water', 'Treated Water (100L)', 100);
+cargo('liquid_water_raw', 'Unfiltered Water (100L)', 100);
+item('crafted_jewelry', 'Jewelry', 5, 'Trucking Cargo: Jewelry');
+
+// Automotive, military, petrochem
+item('mechanicals_battery', 'Car Battery', 20, 'Automotive: Car Battery');
+item('mechanicals_chassis', 'Chassis', 80, 'Automotive: Chassis');
+item('mechanicals_jumper_cable', 'Jumper Cable', 5, 'Automotive: Jumper Cable');
+item('mechanicals_rubber', 'Rubber', 8, 'Automotive: Rubber');
+item('mechanicals_battery_evb', 'Traction Battery', 90, 'Automotive: Traction Battery');
+item('mechanicals_vehicle_framework', 'Vehicle Framework', 200, 'Automotive: Vehicle Framework');
+item('mechanicals_wheels', 'Wheels', 15, 'Automotive: Wheels');
+item('military_chemicals', 'Chemicals', 25, 'Military: Chemicals');
+item('military_explosives', 'Explosives', 250, 'Military: Explosives');
+item('military_titanium', 'Titanium', 20, 'Military: Titanium');
+item('military_titanium_ore', 'Titanium Ore', 25, 'Military: Titanium Ore');
+item('petrochem_oil', 'Crude Oil', 150, 'Petrochem: Crude Oil');
+item('petrochem_diesel', 'Diesel', 25, 'Petrochem: Diesel');
+item('petrochem_kerosene', 'Kerosene', 25, 'Petrochem: Kerosene');
+item('petrochem_petrol', 'Petrol', 25, 'Petrochem: Petrol');
+item('petrochem_propane', 'Propane', 25, 'Petrochem: Propane');
+item('petrochem_gas', 'Raw Gas', 150, 'Petrochem: Raw Gas');
+item('petrochem_sulfur', 'Sulfur', 5, 'Petrochem: Sulfur');
+item('petrochem_waste', 'Waste Water', 50, 'Petrochem: Waste Water');
+item('petrochem_asphalt', 'Asphalt Concrete', 5, 'Petrochem: Asphalt Concrete');
+
+// Mining
+item('mining_copper', 'Copper Ore', 1);
+item('mining_iron', 'Iron Ore', 1);
+item('mining_token_copper', 'Copper Ore Voucher', 0);
+item('mining_token_iron', 'Iron Ore Voucher', 0);
+item('mining_credit', 'Sandstone', 5);
+
+// Food, farming, hunting, fishing
+item('fridge_airline_meal', 'Airline Meal', 3);
+item('fridge_dairy', 'Dairy Products', 15, 'Fridge: Dairy Products');
+item('fridge_meat', 'Frozen Raw Meat', 15, 'Fridge: Frozen Raw Meat');
+item('fridge_veggies', 'Vegetables', 15, 'Fridge: Vegetables');
+item('fridge_store_delivery', 'Food Shipment', 10, 'Fridge: Food Shipment');
+item('fish_meat', 'Fish Meat', 0.1);
+item('fish_meat_premium', 'Premium Fish Meat', 0.1);
+item('meat', 'Meat', 0.5);
+[
+	['wolf', 'Wolf', 10],
+	['rabbit', 'Rabbit', 1],
+	['lion', 'Lion', 10],
+	['bear', 'Brown Bear', 20],
+	['leopard', 'Leopard', 10],
+	['deer', 'Deer', 6],
+	['coyote', 'Coyote', 3],
+	['mtlion', 'Cougar', 5],
+	['boar', 'Boar', 10],
+].forEach(([id, name, w]) => item('hide_' + id, 'Hunting: ' + name, w));
+
+// Misc and crafted goods
+item('tavi_hardened_steel', 'Hardened Steel', 10);
+item('mechanic_hammer', 'Mechanic: Hammer', 5);
+item('mechanic_wrench', 'Mechanic: Wrench', 5);
+item('shipping_crate_empty', 'Shipping Container', 100);
+item('repair_shop', 'Repair Shop', 1, 'Temporary Repair Shop');
+item('house', 'House', 0);
+item('mail', 'Mail', 1);
+item('jerry_can_empty', 'Jerry Can (Empty)', 2);
+item('collinsco_boat_voucher', 'CollinsCo Boat Voucher', 0);
+item('defibkit', 'Defibrillator Kit', 5);
+item('e_defibkit', 'Empty Defibrillator Kit', 5);
+item('pills', 'Pills', 0.1);
+item('illegal_meth', 'Methamphetamine', 10, 'Illegal: Methamphetamine');
+item('illegal_crate', 'Pill crate', 40, 'Illegal: Pill crate');
+item('upgrade_kit_voltic2', 'Upgrade Kit (Voltic)', 20);
+[
+	['tenf|10F', '10F'],
+	['futo|Karin Futo', 'Karin Futo'],
+	['savanna|Coil Savanna', 'Coil Savanna'],
+	['zr350|ZR-350', 'ZR-350'],
+	['vertice|Hijak Vertice', 'Hijak Vertice'],
+	['landstalker2|Landstalker XL', 'Landstalker XL'],
+	['nightshark|HVY Nightshark', 'HVY Nightshark'],
+].forEach(([key, name]) =>
+	item('vehicle_shipment|' + key + '|car', 'Vehicle Shipment: ' + name, 100)
+);
+[
+	['farming|farming', 'Farming'],
+	['hunting|skill', 'Hunting'],
+	['player|racing', 'Racing'],
+	['farming|fishing', 'Fishing'],
+].forEach(([key, name]) => item('exp_token_a|' + key, 'Bonus EXP (' + name + ')', 0));
+
+// ===== Storages and vehicles =====
+// prio: higher is used first by the planner; below 0 is ignored.
+const PRIO = { vehicle: 100, inventory: 100, faction: 30, train: 20, yellowjack: 10, paleto: 2, storage: 1, unknownVehicle: 0, backpack: -1 };
+
+const STORAGES = {};
+function storage(id, name, kind, prio) {
+	STORAGES[id] = { id, name, kind, prio };
+}
+storage('bctp', 'Blaine County Tractor Parts', 'storage', PRIO.storage);
+storage('pbsf', 'Paleto Bay Self Storage', 'storage', PRIO.paleto);
+storage('bhsl', 'Big House Storage LSIA', 'storage', PRIO.storage);
+storage('tsu', 'The Secure Unit', 'storage', PRIO.storage);
+storage('dpss', 'Del Perro Self Storage', 'storage', PRIO.storage);
+storage('gohq', 'Palmer-Taylor Power Station', 'storage', PRIO.storage);
+storage('fthq', 'Pillbox Hill Storage Unit', 'storage', PRIO.storage);
+storage('bats', 'Rogers Salvage & Scrap', 'storage', PRIO.storage);
+storage('fyrecay', 'Cayo Perico Airfield', 'storage', PRIO.storage);
+storage('biz_hookies', 'Hookies', 'storage', PRIO.storage);
+storage('biz_granny', "Grandma's House", 'storage', PRIO.storage);
+storage('biz_yellowjack', 'Yellowjack', 'storage', PRIO.yellowjack);
+storage('biz_stripclub', 'Vanilla Unicorn', 'storage', PRIO.storage);
+storage('biz_ltweld', 'LT Weld Supply Co', 'storage', PRIO.storage);
+storage('biz_walker', 'Walker Logistics', 'storage', PRIO.storage);
+storage('biz_lsia', 'L.S.I.A.', 'storage', PRIO.storage);
+storage('biz_murrietta_oil', 'CollinsCo', 'storage', PRIO.storage);
+storage('biz_playboi', 'Playboy Mansion', 'storage', PRIO.storage);
+storage('biz_vineyard', 'Vineyard', 'storage', PRIO.storage);
+storage('biz_train', 'Train Network', 'storage', PRIO.train);
+storage('faction', 'Faction Storage', 'storage', PRIO.faction);
+storage('inventory', 'Inventory', 'inventory', PRIO.inventory);
+storage('backpack', 'Backpack', 'backpack', PRIO.backpack);
+
+// Vehicles: base capacity in kg. vrp is the exact trunk name in the storage
+// menu where known; otherwise the menu entry is matched by its "(id)" suffix.
+const VEHICLES = {
+	mk15: { name: 'MK15 cab', cap: 6000, cab: true, vrp: 'Chernobog Toter (mk15)' },
+	trailerswb: { name: 'MK1', cap: 400 },
+	trailerlogs2: { name: 'MK3', cap: 600 },
+	botdumptr: { name: 'MK4', cap: 775 },
+	drybulktr: { name: 'MK5', cap: 1000 },
+	dumptr: { name: 'MK6', cap: 1500 },
+	docktrailer2: { name: 'MK7', cap: 2200 },
+	docktrailer: { name: 'MK8', cap: 2500 },
+	trailers2: { name: 'MK9', cap: 2750 },
+	trailerswb2: { name: 'MK10', cap: 3000, vrp: 'Refrigerated Trailer (MK10) (trailerswb2)' },
+	tvtrailer: { name: 'MK11', cap: 3500, vrp: 'Trailer (tvtrailer)' },
+	tvtrailer2: { name: 'MK12', cap: 5000, vrp: 'Trailer (tvtrailer2)' },
+	boxlongtr: { name: 'MK13', cap: 8500, vrp: 'Box Trailer (MK13) (boxlongtr)' },
+	trailerlarge: { name: 'MK14', cap: 9000, vrp: 'Mobile Operations Center (MK14) (trailerlarge)' },
+	xmtrailer: { name: 'eCola Trailer', cap: 8500, vrp: 'eCola Trailer (xmtrailer)' },
+};
+for (const [id, v] of Object.entries(VEHICLES)) {
+	v.id = id;
+	storage(id, v.name, 'vehicle', PRIO.vehicle);
+}
+
+// ===== Recipes =====
+// R(name, type, cost, ingredients, products, opts)
+//   type: 'r' recipe, 'i' pick-up (no ingredients), 'e' export/sale
+//   cost: positive = you pay, negative = you earn
+//   lists: "2 scrap_copper, 1 scrap_tin"
+//   opts.p: default priority, opts.path: menu path "A > B", opts.hm: highest
+//   multiplier, opts.hp: its menu path, opts.exp: exported item for sales,
+//   opts.bonus: [n, name] extra reward shown on the card (not planned),
+//   opts.unverified: menu path not yet confirmed in-game
+// Checked against the TT wiki on 26 Sep 2026.
+function parseList(s) {
+	if (!s) return [];
+	return s.split(',').map((part) => {
+		part = part.trim();
+		const i = part.indexOf(' ');
+		return { id: part.slice(i + 1).trim(), n: Number(part.slice(0, i)) };
+	});
+}
+function parsePath(s) {
+	return s ? s.split(' > ') : [];
+}
+function R(name, type, cost, ins, outs, o = {}) {
+	const path = o.path === undefined ? [name] : parsePath(o.path);
+	const hm = o.hm || 1;
+	let hmPath = path;
+	if (o.hp !== undefined) hmPath = parsePath(o.hp);
+	else if (hm > 1 && path.length) {
+		const last = path[path.length - 1].replace(/ x1$/, '');
+		hmPath = [...path.slice(0, -1), last + ' x' + hm];
+	}
+	const typeName = { r: 'recipe', i: 'import', e: 'export' }[type];
+	const ingredients = parseList(ins);
+	return {
+		name,
+		type: typeName,
+		cost,
+		ins: ingredients,
+		outs: parseList(outs),
+		exp: type === 'e' ? (o.exp ? parseList(o.exp)[0] : ingredients[0]) : null,
+		prio: o.p || 0,
+		path,
+		hm,
+		hmPath,
+		bonus: o.bonus ? { name: o.bonus[1], n: o.bonus[0] } : null,
+		unverified: !!o.unverified,
+	};
+}
+const L = (name, color, recipes) => ({ name, color, recipes });
+
+const fishImporter = (name) =>
+	L(name, '#7a8791', [
+		R('Sell Fish Meat', 'e', -1000, '10 fish_meat', '', { path: 'Sell 10x Fish Meat', hm: 1000, hp: 'Sell 10000x Fish Meat' }),
+		R('Sell Premium Fish Meat', 'e', -3000, '10 fish_meat_premium', '', { path: 'Sell 10x Premium Fish Meat', hm: 100, hp: 'Sell 1000x Premium Fish Meat' }),
+	]);
+const slaughter = (name, hide, meat) =>
+	R(name, 'r', 2000, '1 hide_' + hide, meat + ' meat', { path: name + ' > ' + name + ' x1', hm: 10 });
+const portExport = (name, id, cost, o = {}) =>
+	R(name, 'e', cost, '1 ' + id, '', { path: name + ' > ' + name + ' x1', hm: 10, ...o });
+const shop = (name, id, cost, hm = 10) =>
+	R(name, 'e', cost, '1 ' + id, '', { path: name + ' > ' + name, hm });
+const sandstone = (name, n, out) => R(name, 'r', 0, n + ' mining_credit', '1 ' + out, { p: -100 });
+const CAR_BASE = '1 mechanicals_battery, 1 mechanicals_chassis, 1 mechanicals_vehicle_framework, 4 mechanicals_wheels, 5 crafted_circuit, 25 refined_glass, 50 refined_amalgam';
+
+const LOCATIONS = [
+	fishImporter('Alamo Sea Fish Importer'),
+	fishImporter('Los Santos Fish Importer'),
+	fishImporter('Paleto Cove Fish Importer'),
+	fishImporter('San Chianski Airport Fish Importer'),
+	L('CollinsCo Dealer', '#7a8791', [
+		R('CollinsCo Boat Vouchers', 'e', -1500000, '100 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Vouchers x100', hm: 10, hp: 'CollinsCo Boat Vouchers x1000' }),
+		R('CollinsCo Boat Voucher', 'e', -150000, '10 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Voucher x10' }),
+	]),
+	L('House Construction Site', '#9b6bc9', [
+		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'Concrete Delivery Token'] }),
+	]),
+	L('Hunter: Meat Buyer', '#7a8791', [R('Meat Buyer', 'e', -250, '1 meat', '', { hm: 100 })]),
+	L('Illegal: Defib Kit Charging', '#7a8791', [R('Charge Empty Defib Kit', 'r', 5000, '1 e_defibkit', '1 defibkit', { hm: 2 })]),
+	L('Illegal: Humane Labs', '#7a8791', [R('Craft Pills', 'r', 100000, '8 illegal_meth, 3 illegal_crate', '1 pills')]),
+	L('Illegal: Liquor Ace', '#7a8791', [R('Pick up methamphetamine', 'i', 10000, '', '1 illegal_meth', { hm: 10 })]),
+	L('Illegal: Plastic Molding', '#7a8791', [R('Craft Empty Defib Kit', 'r', 10000, '10 scrap_plastic', '5 e_defibkit')]),
+	L("Illegal: Pop's Pills", '#7a8791', [R('Pick up pills crate', 'r', 10000, '5 scrap_plastic, 1 refined_planks', '1 illegal_crate', { hm: 10 })]),
+	L('PostOp HQ', '#7a8791', [R('Buy mail', 'i', 100, '', '5 mail', { path: 'Buy mail x5', hm: 2, hp: 'Buy mail x10' })]),
+	L('Trucking Cargo Merchant: Erasers', '#c9b98f', [
+		R('Buy: Erasers', 'i', 200, '', '1 tcargosmall', { hm: 100 }),
+		R('Sell: Erasers', 'e', -600, '1 tcargosmall', '', { hm: 100 }),
+	]),
+	L('Trucking Cargo Merchant: Tools', '#9b6bc9', [
+		R('Buy: Tools', 'i', 100, '', '1 pucargosmall', { hm: 100 }),
+		R('Sell: Tools', 'e', -200, '1 pucargosmall', '', { hm: 100 }),
+		R('Mechanic Hammer', 'r', 10000, '1 tavi_hardened_steel, 1 refined_planks', '1 mechanic_hammer', { path: '' }),
+		R('Mechanic Wrench', 'r', 10000, '2 tavi_hardened_steel', '1 mechanic_wrench', { path: '' }),
+	]),
+	L('Trucking: Alta Construction Site', '#9b6bc9', [
+		R('Deliver Asphalt Concrete', 'e', -25000, '5 petrochem_asphalt', '', { p: -1, hm: 5 }),
+		R('Deliver Rebar', 'e', -230000, '1 crafted_rebar', '', { hm: 5 }),
+		R('Deliver Concrete', 'e', -800000, '1 crafted_concrete', '', { hm: 2 }),
+	]),
+	L('Trucking: Bristols Fuel Storage', '#9b6bc9', [
+		R('Sell Diesel', 'e', -12000, '1 petrochem_diesel', '', { hm: 10 }),
+		R('Sell Kerosene', 'e', -15000, '1 petrochem_kerosene', '', { hm: 10 }),
+		R('Sell Petrol', 'e', -8000, '1 petrochem_petrol', '', { hm: 10 }),
+		R('Sell Empty Jerry Cans', 'e', -4000, '10 jerry_can_empty', ''),
+	]),
+	L('Trucking: Chemical Laboratories', '#7a8791', [
+		R('Refine Chemicals', 'r', 2500, '1 military_chemicals', '4 scrap_acid', { p: -1, path: 'Refine Chemicals > Refine Chemicals', hm: 10 }),
+		R('Pick up Toxic Waste', 'i', 0, '', '1 recycled_waste', { p: -10, path: 'Pickup Toxic Waste > Pick up Toxic Waste', hm: 3 }),
+	]),
+	L('Trucking: Clucking Bell Farms', '#7a8791', [
+		R('Pack Fish Meat', 'r', 0, '150 fish_meat', '1 fridge_meat', { hm: 10 }),
+		R('Pack Crispy Fish Meat', 'r', 0, '1000 fish_meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Fish Meat x10' }),
+		R('Pack Meat', 'r', 0, '30 meat', '1 fridge_meat', { hm: 10 }),
+		R('Pack Crispy Meat', 'r', 0, '200 meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Meat x10' }),
+	]),
+	L('Trucking: Davis Mega Mall', '#9b6bc9', [R('Sell Propane', 'e', -10000, '1 petrochem_propane', '', { hm: 10 })]),
+	L('Trucking: Deep Quarry', '#a9b1b8', [
+		R('Recycle Ore Mix', 'r', 0, '15 scrap_ore, 1 military_explosives', '90 refined_sand', { p: -1 }),
+		R('Use Explosives', 'r', 0, '1 military_explosives', '20 refined_sand, 30 scrap_gravel', { p: -10 }),
+		R('Gravel Pulverizing', 'r', 0, '1 military_explosives, 20 scrap_gravel', '100 refined_sand', { p: -1 }),
+	]),
+	L('Trucking: Electronics Store', '#6fbf73', [
+		shop('Deliver Copper Wire Spool', 'crafted_copperwire', -55000),
+		shop('Deliver Solder', 'refined_solder', -5200),
+		R('Pick up Recycled Electronics', 'i', 0, '', '1 recycled_electronics', { path: 'Pick up Recycled Electronics > Pick up Recycled Electronics', hm: 2 }),
+		shop('Deliver Fiberglass Spool', 'crafted_fiberglass', -60000),
+		shop('Deliver Amalgam', 'refined_amalgam', -35000),
+		shop('Deliver Circuit Boards', 'crafted_circuit', -90000),
+	]),
+	L('Trucking: Elysian Island Waste Deposit', '#1fae94', [
+		R('Exchange Iron', 'r', 0, '1 mining_token_iron', '1 scrap_ore', { p: -100, hm: 10 }),
+		R('Toxic Waste', 'i', 0, '', '1 recycled_waste', { hm: 3 }),
+		R('Exchange Copper', 'r', 0, '1 mining_token_copper', '1 scrap_ore', { p: -100, hm: 10 }),
+	]),
+	L('Trucking: Filtering Plant', '#d4a73e', [
+		R('Mix Concrete', 'r', 15000, '1 liquid_water, 5 crafted_cement', '1 crafted_concrete', { hm: 2 }),
+		R('Conveyor Filtering', 'r', 30000, '1 mining_token_copper, 1 mining_token_iron', '1 scrap_emerald, 3 scrap_ore, 10 scrap_gravel', { p: -1 }),
+		R('Filter Toxic Waste', 'r', 15000, '1 recycled_waste', '2 scrap_mercury, 2 scrap_lead, 4 scrap_acid', { hm: 3 }),
+		R('Filter Gravel', 'r', 15000, '10 scrap_gravel', '6 refined_sand, 4 refined_flint', { hm: 6 }),
+		R('Filter Quarry Rubble', 'r', 15000, '1 recycled_rubble', '1 scrap_emerald, 4 scrap_ore, 12 scrap_gravel', { hm: 2 }),
+	]),
+	L('Trucking: Fridgit Co.', '#4f7bd9', [
+		R('Create Airline Meal', 'r', 2500, '1 fridge_meat, 1 fridge_veggies, 1 fridge_dairy', '4 fridge_airline_meal', { path: 'Airline Meals > Create Airline Meal', hm: 10 }),
+		R('Create Dairy Shipment', 'r', 2500, '4 fridge_dairy', '5 fridge_store_delivery', { path: 'Food Shipments > Create Dairy Shipment', hm: 10 }),
+		R('Create Meat Shipment', 'r', 2500, '4 fridge_meat', '5 fridge_store_delivery', { path: 'Food Shipments > Create Meat Shipment', hm: 10, unverified: true }),
+		R('Create Vegetables Shipment', 'r', 2500, '4 fridge_veggies', '5 fridge_store_delivery', { path: 'Food Shipments > Create Vegetables Shipment', hm: 10, unverified: true }),
+	]),
+	L('Trucking: Harmony Shopping Center', '#9b6bc9', [R('Deliver Food Shipment', 'e', -1200, '1 fridge_store_delivery', '', { hm: 30, unverified: true })]),
+	L('Trucking: Grapeseed Farms', '#7a8791', [R('Pick up Dairy', 'i', 0, '', '1 fridge_dairy', { hm: 10 })]),
+	L('Trucking: Great Chaparral Farm', '#7a8791', [R('Pick up Vegetables', 'i', 0, '', '1 fridge_veggies', { hm: 10 })]),
+	L('Trucking: GSD Gas Pumping Station', '#a9b1b8', [R('Extract Raw Gas', 'i', 0, '', '1 petrochem_gas', { hm: 2 })]),
+	L('Trucking: GSD Mine', '#a9b1b8', [R('Use Explosives', 'r', 0, '1 military_explosives', '4 military_titanium_ore, 10 scrap_gold', { p: -10 })]),
+	L('Trucking: Jewelry Store', '#9b6bc9', [
+		R('Deliver Jewelry', 'e', -95000, '1 crafted_jewelry', ''),
+		R('Deliver Refined Gold', 'e', -31000, '1 refined_gold', ''),
+		R('Deliver Raw Emeralds', 'e', -25000, '1 scrap_emerald', '', { hm: 10 }),
+	]),
+	L('Trucking: Land Act Reservoir', '#3f95e8', [R('Pick up Unfiltered Water', 'i', 0, '', '1 liquid_water_raw', { hm: 3 })]),
+	L('Trucking: Logging Camp', '#b0623d', [R('Collect Logs', 'i', 7500, '', '1 tcargologs', { hm: 10 })]),
+	L('Trucking: LS Factory', '#b23a3a', [
+		R('Create Rebar', 'r', 5000, '2 refined_bronze, 6 refined_amalgam', '2 crafted_rebar', { path: 'Create Rebar > Create Rebar', hm: 2 }),
+		R('Titanium Reinforcement', 'r', 5000, '6 military_titanium', '2 crafted_rebar', { p: -1, path: 'Create Rebar > Titanium Reinforcement' }),
+		R('Create Jewelry', 'r', 5000, '1 scrap_emerald, 2 refined_gold', '2 crafted_jewelry', { path: 'Create Jewelry > Create Jewelry' }),
+		R('Titanium Jewelry', 'r', 5000, '1 military_titanium, 4 refined_gold', '4 crafted_jewelry', { p: -1, path: 'Create Jewelry > Titanium Jewelry' }),
+		R('Create Fiberglass Spool', 'r', 5000, '1 refined_planks, 4 refined_glass, 8 scrap_plastic', '2 crafted_fiberglass', { path: 'Create Fiberglass Spool > Create Fiberglass Spool', hm: 10 }),
+		R('Create Cardboard', 'r', 5000, '1 liquid_water, 50 tcargodust', '5 crafted_cardboard', { p: -1, path: 'Craft Cardboard > Create Cardboard' }),
+		R('Create Batteries', 'r', 5000, '4 refined_solder, 2 refined_zinc, 8 scrap_acid', '2 crafted_batteries', { path: 'Create Batteries > Create Batteries', hm: 5 }),
+		R('Create Copper Wire Spool', 'r', 5000, '1 refined_planks, 4 refined_copper', '2 crafted_copperwire', { path: 'Create Copper Wire Spool > Create Copper Wire Spool', hm: 5 }),
+		R('Create Circuit Boards', 'r', 5000, '1 crafted_copperwire, 2 refined_solder, 10 scrap_plastic', '2 crafted_circuit', { path: 'Craft Circuit Boards > Create Circuit Boards', hm: 10 }),
+		R('Create Computer', 'r', 5000, '1 crafted_circuit, 1 crafted_batteries, 2 scrap_gold', '2 crafted_computer', { path: 'Craft Computers > Create Computer', hm: 10 }),
+	]),
+	L('Trucking: LS Foundry', '#c2417f', [
+		R('Refine Titanium', 'r', 1000, '1 military_titanium_ore', '1 military_titanium', { p: 1, path: 'Refine Titanium > Refine Titanium x1', hm: 10 }),
+		R('Refine Copper', 'r', 1000, '2 scrap_copper', '1 refined_copper', { p: 1, path: 'Refine Copper > Refine Copper x1', hm: 20 }),
+		R('Refine Tin', 'r', 1000, '2 scrap_tin', '1 refined_tin', { p: 1, path: 'Refine Tin > Refine Tin x1', hm: 20 }),
+		R('Refine Solder', 'r', 1000, '2 scrap_lead, 2 refined_aluminum', '8 refined_solder', { p: 1, path: 'Refine Solder > Refine Solder', hm: 4 }),
+		R('Refine Gold', 'r', 1000, '10 scrap_gold', '5 refined_gold', { path: 'Refine Gold > Refine Gold x10' }),
+		R('Substitute Gold', 'r', 1000, '10 petrochem_sulfur, 25 refined_bronze, 2 petrochem_petrol', '40 scrap_gold', { p: -1, path: 'Refine Gold > Substitute Gold' }),
+		R('Refine Bronze Alloy', 'r', 1000, '1 scrap_tin, 1 scrap_aluminum, 2 scrap_copper', '2 refined_bronze', { p: 1, path: 'Refine Bronze Alloy > Refine Bronze Alloy x1', hm: 10 }),
+		R('Refine Raw Ore Mix', 'r', 1000, '2 scrap_ore', '1 refined_zinc, 1 refined_copper', { path: 'Refine Raw Ore Mix > Refine Raw Ore Mix x1', hm: 10 }),
+		R('Copper Alloy', 'r', 10000, '20 scrap_ore, 10 petrochem_sulfur', '20 refined_copper', { p: -1, path: 'Refine Raw Ore Mix > Copper Alloy' }),
+		R('Zinc Alloy', 'r', 10000, '20 scrap_ore, 2 petrochem_propane', '20 refined_zinc', { p: -1, path: 'Refine Raw Ore Mix > Zinc Alloy' }),
+		R('Refine Amalgam', 'r', 1000, '2 refined_tin, 2 scrap_mercury', '2 refined_amalgam', { p: 1, path: 'Refine Amalgam > Refine Amalgam', hm: 10 }),
+		R('Refine Aluminum', 'r', 1000, '2 scrap_aluminum', '1 refined_aluminum', { p: 1, path: 'Refine Aluminum > Refine Aluminum x1', hm: 10 }),
+		R('Refine Glass', 'r', 1000, '1 refined_sand', '1 refined_glass', { p: 1, path: 'Refine Glass > Refine Glass x1', hm: 10 }),
+		R('Hardened Steel', 'r', 1000, '1 military_titanium, 5 mining_token_iron', '1 tavi_hardened_steel', { path: 'Refine Steel > Hardened Steel' }),
+		R('Ceramic Tiles', 'r', 1000, '10 refined_flint, 2 refined_sand', '2 crafted_ceramictiles', { path: 'Refine Ceramic Tiles > Ceramic Tiles', hm: 10 }),
+	]),
+	L('Trucking: LS Oil Pumping Station', '#a9b1b8', [R('Extract Crude Oil', 'i', 0, '', '1 petrochem_oil', { hm: 2 })]),
+	L('Trucking: LS Port Export', '#9b6bc9', [
+		portExport('Export Planks', 'refined_planks', -14400),
+		portExport('Export Refined Bronze Alloy', 'refined_bronze', -32000),
+		portExport('Export Sawdust', 'tcargodust', -1800),
+		portExport('Export Aluminum', 'refined_aluminum', -8400),
+		portExport('Export Batteries', 'crafted_batteries', -150000),
+		portExport('Export Copper', 'refined_copper', -10000),
+		portExport('Export Tin', 'refined_tin', -8400),
+		portExport('Export Refined Glass', 'refined_glass', -10000),
+		portExport('Export Rubber', 'mechanicals_rubber', -10000, { path: 'Export Vehicle Parts > Export Rubber' }),
+		portExport('Export Vehicle Framework', 'mechanicals_vehicle_framework', -350000, { path: 'Export Vehicle Parts > Export Vehicle Framework', hm: 1 }),
+		portExport('Export Zinc', 'refined_zinc', -11600),
+		portExport('Ceramic Tiles', 'crafted_ceramictiles', -40000, { path: 'Export Ceramic Tiles > Ceramic Tiles' }),
+		portExport('Computer', 'crafted_computer', -210000, { path: 'Export Computers > Computer' }),
+		portExport('Export Acid', 'scrap_acid', -12800),
+	]),
+	L('Trucking: LSIA Shipments', '#7a8791', [R('Deliver Airline Meal', 'e', -6500, '1 fridge_airline_meal', '', { hm: 30 })]),
+	L('Trucking: McKenzie Export', '#9b6bc9', [
+		R('Export Scrap Plastic', 'e', -3600, '1 scrap_plastic', '', { hm: 100 }),
+		R('Export Flint', 'e', -4250, '1 refined_flint', '', { hm: 100 }),
+		R('Export Cardboard', 'e', -60000, '1 crafted_cardboard', '', { p: -1, hm: 5 }),
+	]),
+	L('Trucking: Military Workshop', '#8e9499', [
+		R('Create Explosives', 'r', 9500, '10 petrochem_sulfur, 8 petrochem_kerosene', '1 military_explosives'),
+		R('Deliver Titanium', 'e', -75000, '1 military_titanium', ''),
+	]),
+	L('Trucking: Mineral Mine', '#a9b1b8', [
+		R('Use Explosives', 'r', 0, '1 military_explosives', '4 military_titanium_ore, 10 scrap_emerald', { p: -10 }),
+		R('Exchange Copper Ore', 'r', 0, '1 mining_copper', '1 mining_token_copper', { p: -10, hm: 10 }),
+		R('Exchange Iron Ore', 'r', 0, '1 mining_iron', '1 mining_token_iron', { p: -10, hm: 10 }),
+	]),
+	L('Trucking: Oil Depository', '#9b6bc9', [
+		R('Fill Helicoper Cans', 'e', -11000, '1 petrochem_kerosene', ''),
+		R('Fill Plane Cans', 'e', -11000, '1 petrochem_kerosene', ''),
+		R('Fill Boat Cans', 'e', -8000, '1 petrochem_diesel', ''),
+		R('Fill Diesel Cans', 'e', -8000, '1 petrochem_diesel', ''),
+		R('Fill Petrol Cans', 'e', -4000, '1 petrochem_petrol', ''),
+	]),
+	L('Trucking: Quarry', '#a9b1b8', [
+		R('Create Cement', 'r', 1500, '5 refined_sand, 2 tcargodust', '1 crafted_cement', { hm: 10 }),
+		R('Deliver Sand', 'e', -1500, '1 refined_sand', ''),
+		R('Pick up Quarry Rubble', 'i', 0, '', '1 recycled_rubble', { hm: 2 }),
+	]),
+	L('Trucking: Raven Slaughterhouse', '#7a8791', [
+		slaughter('Wolf', 'wolf', 20),
+		slaughter('Rabbit', 'rabbit', 2),
+		slaughter('Lion', 'lion', 20),
+		slaughter('Brown Bear', 'bear', 40),
+		slaughter('Leopard', 'leopard', 20),
+		slaughter('Deer', 'deer', 12),
+		slaughter('Coyote', 'coyote', 6),
+		slaughter('Cougar', 'mtlion', 10),
+		slaughter('Boar', 'boar', 20),
+	]),
+	L('Trucking: Recycling Center', '#6fbf73', [R('Pick up Recycled Trash', 'i', 0, '', '1 recycled_trash', { hm: 3 })]),
+	L('Trucking: Refinery', '#6b7075', [
+		R('Refine Crude Oil', 'r', 10250, '1 petrochem_oil', '1 petrochem_diesel, 2 petrochem_petrol, 1 petrochem_kerosene', { hm: 2 }),
+		R('Create Asphalt', 'r', 10250, '1 petrochem_oil, 20 scrap_gravel', '20 petrochem_asphalt', { p: -1 }),
+		R('Refine Raw Gas', 'r', 10250, '1 petrochem_gas', '2 military_chemicals, 2 petrochem_propane, 1 petrochem_waste', { hm: 2 }),
+		R('Refine Rubber', 'r', 41000, '4 petrochem_oil', '4 petrochem_petrol, 4 mechanicals_rubber, 2 petrochem_diesel, 2 petrochem_kerosene'),
+		R('Refine Diluted Fuel', 'r', 10250, '3 petrochem_oil, 2 liquid_water', '3 petrochem_diesel, 3 petrochem_petrol, 20 petrochem_kerosene', { p: -1 }),
+	]),
+	L('Trucking: Sandstone Collector', '#7a8791', [
+		sandstone('Scrap Lead', 3, 'scrap_lead'),
+		sandstone('Scrap Mercury', 3, 'scrap_mercury'),
+		sandstone('Scrap Aluminum', 1, 'scrap_aluminum'),
+		sandstone('Raw Emeralds', 2, 'scrap_emerald'),
+		sandstone('Scrap Copper', 1, 'scrap_copper'),
+		sandstone('Titanium Ore', 5, 'military_titanium_ore'),
+		sandstone('Scrap Tin', 1, 'scrap_tin'),
+		sandstone('Raw Ore Mix', 3, 'scrap_ore'),
+		R('Sell Directly', 'e', -7500, '1 mining_credit', '', { p: -100 }),
+		sandstone('Sand', 1, 'refined_sand'),
+		sandstone('Flint', 1, 'refined_flint'),
+	]),
+	L('Trucking: Sawmill', '#8f4a28', [
+		R('Sawdust Filler Exploit', 'r', 2500, '5 tcargologs, 10 refined_sand', '100 tcargodust', { p: -1, path: 'Grind Sawdust > Sawdust Filler Exploit' }),
+		R('Grind Sawdust', 'r', 500, '1 tcargologs', '10 tcargodust', { p: 1, path: 'Grind Sawdust > Grind Sawdust x1', hm: 5 }),
+		R('Mill Planks', 'r', 500, '1 tcargologs', '1 refined_planks, 2 tcargodust', { path: 'Mill Planks > Mill Planks x1', hm: 5 }),
+		R('Chipboard Planks', 'r', 2500, '5 tcargologs, 30 tcargodust', '15 refined_planks', { p: -1, path: 'Mill Planks > Chipboard Planks' }),
+	]),
+	L('Trucking: Sorting Facility', '#2e7d32', [
+		R('Sort Recycled Electronics', 'r', 25000, '1 recycled_electronics', '1 scrap_gold, 8 scrap_copper, 12 scrap_plastic', { hm: 2 }),
+		R('Sort Recycled Trash', 'r', 25000, '1 recycled_trash', '4 scrap_tin, 4 scrap_aluminum, 8 scrap_plastic', { hm: 3 }),
+	]),
+	L('Trucking: Vehicle Factory', '#7a8791', [
+		R('Coil Rocket Voltic', 'r', 90110000, CAR_BASE + ', 15 crafted_fiberglass, 100 petrochem_kerosene', '1 upgrade_kit_voltic2'),
+		R('HVY Nightshark', 'r', 13780000, '2 mechanicals_vehicle_framework, 15 refined_glass, 2 mechanicals_chassis, 12 crafted_circuit, 25 crafted_fiberglass, 2 mechanicals_battery, 40 refined_amalgam, 60 military_titanium, 4 mechanicals_wheels, 1 liquid_water', '1 vehicle_shipment|nightshark|HVY Nightshark|car'),
+		R('10F', 'r', 22500000, CAR_BASE + ', 25 crafted_fiberglass', '1 vehicle_shipment|tenf|10F|car', { p: -1 }),
+		R('Karin Futo', 'r', 220000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|futo|Karin Futo|car'),
+		R('Coil Savanna', 'r', 8380000, CAR_BASE + ', 3 mechanicals_battery_evb, 35 crafted_fiberglass', '1 vehicle_shipment|savanna|Coil Savanna|car'),
+		R('ZR-350', 'r', 1620000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|zr350|ZR-350|car'),
+		R('Hijak Vertice', 'r', 320000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|vertice|Hijak Vertice|car'),
+		R('Dundreary Landstalker XL', 'r', 32000000, '2 mechanicals_battery, 1 mechanicals_chassis, 1 mechanicals_vehicle_framework, 4 mechanicals_wheels, 10 crafted_circuit, 30 crafted_fiberglass, 50 refined_glass, 100 refined_amalgam', '1 vehicle_shipment|landstalker2|Landstalker XL|car'),
+		R('Shipping Container', 'r', 1000000, '10 refined_planks, 10 tavi_hardened_steel', '1 shipping_crate_empty', { path: '1x Shipping Container' }),
+	]),
+	L('Trucking: Vehicle Parts', '#7a8791', [
+		R('Temporary Repair Shop', 'r', 1500000, '2 pucargosmall, 2 mechanicals_wheels, 2 military_titanium, 2 mechanicals_chassis', '20 repair_shop'),
+		R('Chassis', 'r', 100000, '15 refined_amalgam', '1 mechanicals_chassis'),
+		R('Vehicle Framework', 'r', 250000, '25 refined_amalgam', '1 mechanicals_vehicle_framework'),
+		R('Car Battery', 'r', 35000, '2 crafted_batteries', '1 mechanicals_battery'),
+		R('Wheels', 'r', 20000, '10 mechanicals_rubber, 1 refined_aluminum', '1 mechanicals_wheels'),
+		R('Traction Battery', 'r', 120000, '6 mechanicals_battery', '1 mechanicals_battery_evb'),
+		R('Jumper Cable', 'r', 3000, '1 mechanicals_rubber, 1 crafted_copperwire', '2 mechanicals_jumper_cable', { path: '' }),
+	]),
+	L('Trucking: Water Treatment Plant', '#3f95e8', [
+		R('Clean Waste Water', 'r', 5000, '2 petrochem_waste', '1 liquid_water', { p: -1 }),
+		R('Treat Waste Water', 'r', 5000, '1 petrochem_waste', '5 petrochem_sulfur', { hm: 2 }),
+		R('Treat Unfiltered Water', 'r', 5000, '1 liquid_water_raw, 1 scrap_acid', '1 liquid_water', { hm: 2 }),
+	]),
+	L('Mineshaft', '#a9b1b8', [
+		R('Mine Iron Ore', 'i', 0, '', '1 mining_iron', { path: '' }),
+		R('Mine Copper Ore', 'i', 0, '', '1 mining_copper', { path: '' }),
+	]),
+	L('Roxite Mine', '#a9b1b8', [
+		R('Abuse Explosives', 'r', 0, '2 military_explosives', '80 refined_flint', { p: -1 }),
+		R('Use Explosives', 'r', 0, '1 military_explosives', '10 military_titanium_ore', { p: -1 }),
+	]),
+	L('Roxwood Fruit Market', '#3c9a4a', [R('Sell Food', 'r', 0, '1 fridge_store_delivery', '10 exp_token_a|farming|farming')]),
+	L('Roxwood Loft Market', '#8b5a2b', [R('Feed the Hunters', 'r', 0, '10 fridge_store_delivery', '100 exp_token_a|hunting|skill')]),
+	L('Roxwood Intl. Raceway', '#e0602a', [
+		R('Re-stock Fuel Tank', 'r', 0, '10 petrochem_petrol', '100 exp_token_a|player|racing'),
+		R('Spare Parts', 'r', 0, '1 mechanicals_battery, 1 mechanicals_chassis, 1 mechanicals_vehicle_framework, 2 mechanicals_wheels', '250 exp_token_a|player|racing', { p: -1, hm: 10 }),
+	]),
+	L('Roxwood Marina', '#2a86e0', [R('Re-supply Marina', 'r', 0, '10 petrochem_diesel', '100 exp_token_a|farming|fishing')]),
+];
+
+const RECIPES = [];
+for (const loc of LOCATIONS) {
+	for (const r of loc.recipes) {
+		r.loc = loc.name;
+		r.color = loc.color;
+		r.key = loc.name + '::' + r.name;
+		r.defaultPrio = r.prio;
+		RECIPES.push(r);
+	}
+}
+
+// ===== Core logic (no DOM) =====
+
+const stripTags = (s) => String(s ?? '').replace(/(<.+?>)|(&#.+?;)/g, '').trim();
+const stripColors = (s) => String(s ?? '').replace(/~.~/g, '').trim();
+const itemName = (id) => (ITEMS[id] ? ITEMS[id].name : id);
+const itemWeight = (id) => (ITEMS[id] ? ITEMS[id].w : 0);
+const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '∞');
+const money = (n) => '$' + fmt(n);
+
+// --- Storage keys ---
+// Resolves a chest key from the game or API to a storage id, or null when the
+// chest belongs to someone else. Handles:
+//   chest_self_storage:<uid>:<id>:chest   self storages and businesses
+//   chest_u<uid>veh_<model>_<id>          vehicle trunks
+//   chest_u<uid>backpack                  backpack
+//   chest_faq_<factionId>                 faction storage
+function resolveStorageId(rawKey, userId, factionId) {
+	let k = String(rawKey).replace(/^chest_/, '');
+	if (k === 'inventory') return 'inventory';
+	const self = k.match(/^self_storage:(\d+):(.+):chest$/);
+	if (self) return userId && self[1] !== String(userId) ? null : self[2];
+	const u = k.match(/^u(\d+)(.*)$/);
+	if (u) {
+		if (userId && u[1] !== String(userId)) return null;
+		k = u[2];
+	}
+	const veh = k.match(/^veh_\w+_(.+)$/);
+	if (veh) k = veh[1];
+	if (k.startsWith('faq_')) return factionId && k !== 'faq_' + factionId ? null : 'faction';
+	return k || null;
+}
+
+// Converts an inventory object ({ itemId: { amount } }) into a Map.
+function parseInventory(obj) {
+	const items = new Map();
+	for (const [rawId, v] of Object.entries(obj || {})) {
+		let id = stripTags(rawId);
+		if (id.startsWith('gut_knife')) id = id.split('|')[0];
+		const n = typeof v === 'number' ? v : Number(v && v.amount);
+		if (n > 0) items.set(id, (items.get(id) || 0) + n);
+	}
+	return items;
+}
+
+function storageInfo(id) {
+	if (STORAGES[id]) return STORAGES[id];
+	// Unknown chest: assume a vehicle the data table doesn't list yet.
+	return { id, name: id, kind: 'vehicle', prio: PRIO.unknownVehicle, unknown: true };
+}
+
+// --- Recipes ---
+function scaleRecipe(r, useHM) {
+	if (!useHM || r.hm <= 1) return { ...r, mult: 1 };
+	const m = r.hm;
+	const sc = (l) => l.map((x) => ({ id: x.id, n: x.n * m }));
+	return { ...r, ins: sc(r.ins), outs: sc(r.outs), exp: r.exp && { id: r.exp.id, n: r.exp.n * m }, cost: r.cost * m, path: r.hmPath, mult: m, bonus: r.bonus && { name: r.bonus.name, n: r.bonus.n * m } };
+}
+
+function unitWeights(r) {
+	const inW = r.ins.reduce((s, x) => s + itemWeight(x.id) * x.n, 0);
+	const outW = r.type === 'export' ? 0 : r.outs.reduce((s, x) => s + itemWeight(x.id) * x.n, 0);
+	return { inW, outW };
+}
+
+// Items that can be planned: anything a recipe produces or a sale accepts.
+function plannableItems() {
+	const ids = new Set();
+	for (const r of RECIPES) {
+		r.outs.forEach((o) => ids.add(o.id));
+		if (r.exp) ids.add(r.exp.id);
+	}
+	return [...ids].sort((a, b) => itemName(a).localeCompare(itemName(b)));
+}
+
+// --- Planner ---
+// targets: [{ id, n }]
+// storages: [{ id, name, prio, items: Map }]
+// opts: { useHM, sell, prioOf(recipe) }
+function solve(targets, storages, opts) {
+	const prioOf = opts.prioOf || ((r) => r.prio);
+	const producers = {};
+	const sellers = {};
+	for (const r of RECIPES) {
+		const p = prioOf(r);
+		if (r.type === 'export') {
+			const cur = sellers[r.exp.id];
+			if (!cur || p > prioOf(cur)) sellers[r.exp.id] = r;
+		} else {
+			for (const o of r.outs) {
+				const cur = producers[o.id];
+				if (!cur || p > prioOf(cur)) producers[o.id] = r;
+			}
+		}
+	}
+
+	const pool = storages
+		.filter((s) => s.prio >= 0)
+		.sort((a, b) => b.prio - a.prio)
+		.map((s) => ({ id: s.id, name: s.name, items: new Map(s.items) }));
+	const leftovers = new Map(); // itemId -> [{ key, n }]
+	const nodes = new Map();
+	const edges = new Map();
+	const active = new Set();
+
+	function node(key, init) {
+		if (!nodes.has(key)) nodes.set(key, { key, crafts: 0, takes: new Map(), ...init });
+		return nodes.get(key);
+	}
+	function link(from, to, id, n) {
+		if (n <= 0 || from === to) return;
+		const k = from + '|' + to + '|' + id;
+		const e = edges.get(k);
+		if (e) e.n += n;
+		else edges.set(k, { from, to, id, n });
+	}
+
+	function need(id, amount, consumer) {
+		let rem = amount;
+		for (const lo of leftovers.get(id) || []) {
+			if (rem <= 0) break;
+			const take = Math.min(lo.n, rem);
+			if (take <= 0) continue;
+			lo.n -= take;
+			rem -= take;
+			link(lo.key, consumer, id, take);
+		}
+		for (const st of pool) {
+			if (rem <= 0) break;
+			const have = st.items.get(id) || 0;
+			if (have <= 0) continue;
+			const take = Math.min(have, rem);
+			st.items.set(id, have - take);
+			rem -= take;
+			const key = 'storage:' + st.id;
+			const nd = node(key, { kind: 'storage', storageId: st.id, label: st.name });
+			nd.takes.set(id, (nd.takes.get(id) || 0) + take);
+			link(key, consumer, id, take);
+		}
+		if (rem <= 0) return;
+
+		const base = producers[id];
+		if (!base || active.has(base.key)) {
+			const key = 'missing:' + id;
+			const nd = node(key, { kind: 'missing', label: 'Get ' + itemName(id), itemId: id });
+			nd.takes.set(id, (nd.takes.get(id) || 0) + rem);
+			link(key, consumer, id, rem);
+			return;
+		}
+		const r = scaleRecipe(base, opts.useHM);
+		const per = r.outs.find((o) => o.id === id).n;
+		const crafts = Math.ceil(rem / per);
+		const key = 'recipe:' + base.key;
+		const nd = node(key, { kind: 'recipe', recipe: r, label: r.name });
+		nd.crafts += crafts;
+		link(key, consumer, id, rem);
+
+		active.add(base.key);
+		for (const ing of r.ins) need(ing.id, ing.n * crafts, key);
+		active.delete(base.key);
+
+		for (const o of r.outs) {
+			const extra = o.n * crafts - (o.id === id ? rem : 0);
+			if (extra <= 0) continue;
+			if (!leftovers.has(o.id)) leftovers.set(o.id, []);
+			leftovers.get(o.id).push({ key, n: extra });
+		}
+	}
+
+	for (const t of targets) {
+		if (!(t.n > 0)) continue;
+		const seller = opts.sell ? sellers[t.id] : null;
+		if (seller) {
+			const r = scaleRecipe(seller, opts.useHM);
+			const crafts = Math.ceil(t.n / r.exp.n);
+			const key = 'recipe:' + seller.key;
+			const nd = node(key, { kind: 'recipe', recipe: r, label: r.name, target: true });
+			nd.crafts += crafts;
+			for (const ing of r.ins) need(ing.id, ing.n * crafts, key);
+		} else {
+			const key = 'target:' + t.id;
+			const nd = node(key, { kind: 'target', label: 'Keep ' + itemName(t.id), itemId: t.id, target: true });
+			nd.takes.set(t.id, (nd.takes.get(t.id) || 0) + t.n);
+			need(t.id, t.n, key);
+		}
+	}
+
+	// Surplus left over at the end of the plan.
+	const surplus = new Map();
+	for (const [id, list] of leftovers) {
+		const n = list.reduce((s, x) => s + x.n, 0);
+		if (n > 0) surplus.set(id, n);
+	}
+
+	return { nodes: [...nodes.values()], edges: [...edges.values()], surplus };
+}
+
+// --- Loading ---
+// vehicles: [{ id, name, cap }] with multipliers already applied.
+// Returns { perRun, loads(crafts) -> [{ vehicleIndex, items: [{id, n}] }] }.
+function loadPlan(r, vehicles, optimal) {
+	const { inW, outW } = unitWeights(r);
+	const caps = vehicles.map((v) => v.cap);
+	const total = caps.reduce((s, c) => s + c, 0);
+
+	// Optimal: each vehicle carries whole crafts, with room for the products
+	// on the way out. Suits processing where output lands in the same trunk.
+	const unit = Math.max(inW, outW);
+	const optAlloc = caps.map((c) => (unit > 0 ? Math.floor(c / unit) : Infinity));
+	const optPer = optAlloc.reduce((s, x) => s + x, 0);
+
+	function packOptimal(crafts) {
+		let left = crafts;
+		return optAlloc.map((a, i) => {
+			const c = Math.min(a, left);
+			left -= c;
+			return { vehicle: i, crafts: c, items: r.ins.map((x) => ({ id: x.id, n: x.n * c })).filter((x) => x.n > 0) };
+		});
+	}
+
+	// Max load: fill every vehicle with ingredients, splitting an ingredient
+	// across vehicles when needed. Ignores product weight.
+	function pack(crafts) {
+		const room = [...caps];
+		const out = caps.map((_, i) => ({ vehicle: i, crafts: null, items: [] }));
+		const order = [...r.ins].sort((a, b) => itemWeight(b.id) - itemWeight(a.id));
+		for (const ing of order) {
+			const w = itemWeight(ing.id);
+			let need = ing.n * crafts;
+			for (let i = 0; i < room.length && need > 0; i++) {
+				const fit = w > 0 ? Math.floor(room[i] / w) : need;
+				const put = Math.min(fit, need);
+				if (put > 0) {
+					out[i].items.push({ id: ing.id, n: put });
+					room[i] -= put * w;
+					need -= put;
+				}
+			}
+			if (need > 0) return null;
+		}
+		return out;
+	}
+	let maxPer = Infinity;
+	if (inW > 0) {
+		let lo = 0;
+		let hi = Math.floor(total / inW);
+		while (lo < hi) {
+			const mid = Math.ceil((lo + hi) / 2);
+			if (pack(mid)) lo = mid;
+			else hi = mid - 1;
+		}
+		maxPer = lo;
+	}
+
+	// Use optimal when asked, or when it costs nothing extra.
+	const useOptimal = optimal || optPer >= maxPer;
+	return {
+		inW,
+		outW,
+		mode: useOptimal ? 'optimal' : 'max',
+		perRun: useOptimal ? optPer : maxPer,
+		loads(crafts) {
+			if (crafts <= 0) return [];
+			return useOptimal ? packOptimal(crafts) : pack(crafts) || [];
+		},
+	};
+}
+
+function nodeRuns(nd, vehicles, optimal) {
+	if (nd.kind !== 'recipe') return null;
+	const plan = loadPlan(nd.recipe, vehicles, optimal);
+	const runs = plan.perRun === Infinity ? 1 : plan.perRun > 0 ? Math.ceil(nd.crafts / plan.perRun) : Infinity;
+	const runCrafts = plan.perRun === Infinity ? nd.crafts : Math.min(nd.crafts, plan.perRun);
+	return { plan, runs, runCrafts, loads: plan.loads(runCrafts) };
+}
+
+function planTotals(result, vehicles, optimal) {
+	let cost = 0;
+	let revenue = 0;
+	let runs = 0;
+	for (const nd of result.nodes) {
+		if (nd.kind !== 'recipe') continue;
+		const c = nd.recipe.cost * nd.crafts;
+		if (c > 0) cost += c;
+		else revenue -= c;
+		const r = nodeRuns(nd, vehicles, optimal);
+		if (r && Number.isFinite(r.runs)) runs += r.runs;
+	}
+	return { cost, revenue, runs };
+}
+
+// --- Menu actions ---
+// A step is { match } where match is { text } for an exact menu entry or
+// { suffix } to match an entry ending with that text, plus optional mod.
+// An action is { steps, amount } — amount 0 means no quantity prompt.
+const MENU = {
+	openStorage: 'Open Storage',
+	take: 'Take',
+	takeToTrunk: 'Take to Trunk',
+	putAll: 'Put All',
+	dumpTrunk: 'Dump from Trunk',
+};
+
+function vehicleMatch(v) {
+	if (v.id === 'inventory') return null;
+	return v.vrp ? { text: v.vrp } : { suffix: '(' + v.id + ')' };
+}
+
+function takeAction(v, id, amount) {
+	const itemStep = { match: { text: stripTags(ITEMS[id] ? ITEMS[id].vrp : id) } };
+	if (v.id === 'inventory') {
+		return { label: `Take ${itemName(id)} ×${amount === 'max' ? 'max' : amount} to inventory`, steps: [{ match: { text: MENU.openStorage } }, { match: { text: MENU.take } }, amount === 'max' ? { ...itemStep, mod: -1 } : itemStep], amount: amount === 'max' ? 0 : amount };
+	}
+	return { label: `Load ${itemName(id)} ×${amount === 'max' ? 'max' : amount} into ${v.name}`, steps: [{ match: { text: MENU.takeToTrunk } }, { match: vehicleMatch(v) }, amount === 'max' ? { ...itemStep, mod: -1 } : itemStep], amount: amount === 'max' ? 0 : amount };
+}
+
+function dumpAction(v) {
+	if (v.id === 'inventory') return { label: 'Put all from inventory', steps: [{ match: { text: MENU.openStorage } }, { match: { text: MENU.putAll }, fireAndWait: true }], amount: 0 };
+	return { label: `Dump ${v.name}`, steps: [{ match: { text: MENU.dumpTrunk } }, { match: vehicleMatch(v) }], amount: 0 };
+}
+
+function choiceMatches(choiceText, match) {
+	const t = stripTags(choiceText);
+	if (!match) return false;
+	if (match.text != null) return t === match.text;
+	if (match.suffix != null) return t.endsWith(match.suffix);
+	return false;
+}
+
+
+// ===== App =====
+
+const API_BASE = 'https://tycoon-2epova.users.cfx.re/status/';
+const API_MIRROR = 'https://d.ttstats.eu/public-main/status/';
+const NOTIFY_PREFIX = '~y~[Haul Planner]~w~ ';
+const TRIGGERS = { load: 'haulplanner_load', dump: 'haulplanner_dump', take: 'haulplanner_take' };
+
+// ---------- Storage (namespaced localStorage) ----------
+const NS = 'haulplanner:';
+const store = {
+	get(k, fallback) {
+		try {
+			const v = localStorage.getItem(NS + k);
+			return v == null ? fallback : JSON.parse(v);
+		} catch {
+			return fallback;
+		}
+	},
+	set(k, v) {
+		try {
+			localStorage.setItem(NS + k, JSON.stringify(v));
+		} catch {}
+	},
+};
+
+const DEFAULTS = {
+	apiKey: '',
+	userId: '',
+	altApi: false,
+	cab: true,
+	trailer: 'trailerlarge',
+	useInventory: true,
+	premium: true,
+	milk: false,
+	perk: 'none',
+	sell: true,
+	useStorages: true,
+	optimal: true,
+	useHM: false,
+	autoPlan: true,
+	automation: false,
+	dumpFirst: true,
+	autoRecipe: false,
+	autoTrunk: false,
+	takeItem: '',
+};
+
+const S = {
+	settings: { ...DEFAULTS, ...store.get('settings', {}) },
+	targets: store.get('targets', [{ id: 'house', n: 1 }]),
+	recipePrio: store.get('recipePrio', {}),
+	storagePrio: store.get('storagePrio', {}),
+	storages: new Map(),
+	pinned: store.get('pinned', null),
+	game: {},
+	inGame: false,
+	result: null,
+	vehicles: [],
+	graphDirty: true,
+	busy: false,
+	triggersArmed: false,
+	view: { x: 30, y: 30, k: 1 },
+	timers: new Set(),
+	lastAutoTrunk: 0,
+	recipeFiredForMenu: false,
+};
+
+// Restore storages saved from an earlier session.
+for (const s of store.get('storages', [])) {
+	S.storages.set(s.id, { ...storageInfo(s.id), items: new Map(s.items), source: s.source, updated: s.updated });
+}
+
+const saveSettings = () => store.set('settings', S.settings);
+const saveStorages = () =>
+	store.set(
+		'storages',
+		[...S.storages.values()].map((s) => ({ id: s.id, items: [...s.items], source: s.source, updated: s.updated }))
+	);
+
+// ---------- DOM helpers ----------
+const $ = (sel) => document.querySelector(sel);
+function h(tag, props = {}, ...children) {
+	const node = document.createElement(tag);
+	for (const [k, v] of Object.entries(props)) {
+		if (v == null || v === false) continue;
+		if (k === 'class') node.className = v;
+		else if (k === 'text') node.textContent = v;
+		else if (k === 'style') node.style.cssText = v;
+		else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+		else if (k in node && typeof v !== 'string') node[k] = v;
+		else node.setAttribute(k, v);
+	}
+	for (const c of children.flat()) {
+		if (c == null || c === false) continue;
+		node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+	}
+	return node;
+}
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+const locShort = (loc) => loc.replace(/^Trucking: /, '');
+
+function log(msg, level = 'info') {
+	const box = $('#log');
+	const line = h('div', { class: level, text: `[${new Date().toLocaleTimeString()}] ${msg}` });
+	box.append(line);
+	while (box.childElementCount > 80) box.firstElementChild.remove();
+	box.scrollTop = box.scrollHeight;
+	(level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(msg);
+}
+
+// ---------- Game bridge ----------
+function send(type, args = {}) {
+	if (window.parent === window) return;
+	window.parent.postMessage({ type, ...args }, '*');
+}
+const notify = (text) => send('notification', { text: NOTIFY_PREFIX + text });
+
+const userId = () => String(S.settings.userId || S.game.user_id || '');
+const factionId = () => (S.game.faction_id != null ? String(S.game.faction_id) : null);
+
+window.addEventListener('message', (ev) => {
+	// Only accept messages from the game host frame (or the page itself).
+	if (ev.source && ev.source !== window.parent && ev.source !== window) return;
+	const msg = ev.data;
+	if (!msg || typeof msg !== 'object') return;
+	if (msg.fromTycoonScript === true && !S.inGame) {
+		S.inGame = true;
+		document.body.classList.add('in-game');
+	}
+	if (msg.data && typeof msg.data === 'object') onGameData(msg.data);
+});
+
+function onGameData(data) {
+	// Keybind triggers: act only when the value changes after start-up.
+	for (const [action, trigger] of Object.entries(TRIGGERS)) {
+		const key = 'trigger_' + trigger;
+		if (data[key] == null) continue;
+		const changed = data[key] !== S.game[key];
+		S.game[key] = data[key];
+		if (changed && S.triggersArmed) {
+			if (action === 'load') loadPinned();
+			if (action === 'dump') dumpTrunks();
+			if (action === 'take') takeMax();
+		}
+	}
+
+	const prevMenuOpen = S.game.menu_open;
+	let storagesChanged = false;
+
+	for (const [key, value] of Object.entries(data)) {
+		if (key.startsWith('trigger_')) continue;
+		if (key === 'menu_choices') {
+			try {
+				S.game.menu_choices = typeof value === 'string' ? JSON.parse(value || '[]') : value;
+			} catch {
+				S.game.menu_choices = [];
+			}
+			continue;
+		}
+		if ((key.startsWith('chest_') && key !== 'chest') || key === 'inventory' || key === 'backpack') {
+			const id = key === 'backpack' ? 'backpack' : resolveStorageId(key, userId(), factionId());
+			if (!id) continue;
+			let obj = {};
+			try {
+				obj = typeof value === 'string' ? JSON.parse(value || '{}') : value || {};
+			} catch {
+				continue;
+			}
+			setStorage(id, parseInventory(obj), 'game');
+			storagesChanged = true;
+			continue;
+		}
+		S.game[key] = value;
+	}
+
+	if ('user_id' in data && !S.settings.userId) $('#userId').placeholder = String(S.game.user_id);
+	if ('focused' in data || 'pinned' in data) applyFocus();
+	if ('max_weight' in data) scheduleReplan();
+	if ('notification' in data) onNotification(String(data.notification || ''));
+	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
+	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
+}
+
+function applyFocus() {
+	const overlay = S.inGame && S.game.focused === false;
+	document.body.classList.toggle('overlay', overlay);
+	if (!overlay && S.graphDirty) renderGraph();
+}
+
+// ---------- Storages ----------
+function setStorage(id, items, source) {
+	const prev = S.storages.get(id);
+	S.storages.set(id, { ...storageInfo(id), items, source, updated: Date.now(), prev });
+	saveStorages();
+}
+
+function storagePrio(s) {
+	return S.storagePrio[s.id] ?? s.prio;
+}
+
+async function apiGet(path) {
+	const base = S.settings.altApi ? API_MIRROR : API_BASE;
+	const res = await fetch(base + path, { headers: { 'X-Tycoon-Key': S.settings.apiKey } });
+	if (!res.ok) {
+		if (res.status === 402) throw new Error('No API charges left on this key');
+		if (res.status === 403) throw new Error('The TT API rejected this key');
+		throw new Error(`TT API error ${res.status} on ${path.split('/')[0]}`);
+	}
+	return res.json();
+}
+
+async function refreshFromApi() {
+	const uid = userId();
+	if (!S.settings.apiKey) return log('Add your TT API key under “TT API” to refresh.', 'warn');
+	if (!uid) return log('Enter your user ID under “TT API”, or load the app in-game.', 'warn');
+	const btn = $('#refresh');
+	btn.disabled = true;
+	btn.textContent = 'Refreshing…';
+	try {
+		const [data, backpack, trunks, storages] = await Promise.all([
+			apiGet('data/' + uid),
+			apiGet('chest/u' + uid + 'backpack'),
+			apiGet('trunks/' + uid),
+			apiGet('storages/' + uid),
+		]);
+		const fresh = new Map();
+		const put = (id, inv) => id && fresh.set(id, { ...storageInfo(id), items: parseInventory(inv), source: 'api', updated: Date.now() });
+		put('inventory', data?.data?.inventory);
+		put('backpack', backpack?.data);
+		for (const t of trunks?.trunks || []) put(resolveStorageId(t.vehicle, uid, factionId()), t.inventory);
+		for (const s of storages?.storages || []) put(resolveStorageId(s.name, uid, factionId()), s.inventory);
+		S.storages = fresh;
+		saveStorages();
+		log(`Read ${fresh.size} storages from the TT API.`);
+		replan();
+	} catch (e) {
+		log(e.message, 'error');
+	} finally {
+		btn.disabled = false;
+		btn.textContent = 'Refresh storages';
+	}
+}
+
+// ---------- Planning ----------
+function activeVehicles() {
+	const s = S.settings;
+	const trunkMult = 1 + (s.premium ? 0.15 : 0) + (s.milk ? 0.2 : 0) + (s.perk === 'postop' ? 0.15 : 0);
+	const invMult = 1 + (s.premium ? 0.15 : 0) + (s.milk ? 0.5 : 0) + (s.perk === 'strength' ? 1 : 0);
+	const list = [];
+	if (s.cab) list.push({ ...VEHICLES.mk15, cap: Math.round(VEHICLES.mk15.cap * trunkMult) });
+	if (s.trailer && VEHICLES[s.trailer]) list.push({ ...VEHICLES[s.trailer], cap: Math.round(VEHICLES[s.trailer].cap * trunkMult) });
+	if (s.useInventory) {
+		const gameMax = Number(S.game.max_weight);
+		list.push({ id: 'inventory', name: 'Inventory', cap: gameMax > 0 ? gameMax : Math.round(300 * invMult) });
+	}
+	return list.sort((a, b) => b.cap - a.cap);
+}
+
+let replanTimer = null;
+function scheduleReplan() {
+	clearTimeout(replanTimer);
+	replanTimer = setTimeout(replan, 250);
+}
+
+function replan() {
+	S.vehicles = activeVehicles();
+	const activeIds = new Set(S.vehicles.map((v) => v.id));
+	const pool = S.settings.useStorages
+		? [...S.storages.values()]
+				.filter((s) => (s.kind === 'vehicle' ? activeIds.has(s.id) : s.kind === 'inventory' ? S.settings.useInventory : true))
+				.map((s) => ({ id: s.id, name: s.name, prio: storagePrio(s), items: s.items }))
+		: [];
+	S.result = S.targets.length
+		? solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio })
+		: { nodes: [], edges: [], surplus: new Map() };
+
+	if (S.pinned && !S.result.nodes.some((n) => n.key === S.pinned)) setPinned(null);
+
+	const totals = planTotals(S.result, S.vehicles, S.settings.optimal);
+	$('#statRuns').textContent = fmt(totals.runs);
+	$('#statCost').textContent = money(totals.cost);
+	$('#statRevenue').textContent = money(totals.revenue);
+
+	S.graphDirty = true;
+	if (!document.body.classList.contains('overlay')) renderGraph();
+	renderPin();
+}
+
+// ---------- Route graph ----------
+function layoutColumns(result) {
+	const depth = new Map(result.nodes.map((n) => [n.key, n.target ? 0 : -1]));
+	for (let pass = 0; pass < result.nodes.length; pass++) {
+		let moved = false;
+		for (const e of result.edges) {
+			const d = (depth.get(e.to) ?? 0) + 1;
+			if (d > (depth.get(e.from) ?? -1) && d <= result.nodes.length) {
+				depth.set(e.from, d);
+				moved = true;
+			}
+		}
+		if (!moved) break;
+	}
+	const cols = [];
+	for (const n of result.nodes) {
+		const d = Math.max(0, depth.get(n.key));
+		(cols[d] ||= []).push(n);
+	}
+	// Order each column by where its consumers sit, to reduce crossings.
+	const pos = new Map();
+	cols.forEach((col, d) => {
+		if (!col) return;
+		if (d > 0) {
+			const score = (n) => {
+				const idx = result.edges.filter((e) => e.from === n.key && pos.has(e.to)).map((e) => pos.get(e.to));
+				return idx.length ? idx.reduce((a, b) => a + b, 0) / idx.length : 1e9;
+			};
+			col.sort((a, b) => score(a) - score(b));
+		}
+		col.forEach((n, i) => pos.set(n.key, i));
+	});
+	return cols.filter(Boolean).reverse();
+}
+
+function cardFor(n) {
+	const classes = ['card', n.kind];
+	if (n.key === S.pinned) classes.push('pinned');
+	const card = h('div', { class: classes.join(' '), 'data-key': n.key });
+	const list = h('ul');
+
+	if (n.kind === 'recipe') {
+		const r = n.recipe;
+		card.style.setProperty('--stripe', r.color);
+		const info = nodeRuns(n, S.vehicles, S.settings.optimal);
+		card.append(
+			h('div', { class: 'where', text: locShort(r.loc) }),
+			h('div', { class: 'what', text: r.name }),
+			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'too heavy' })
+		);
+		list.append(h('li', {}, h('span', { text: r.mult > 1 ? `Crafts (x${r.mult})` : 'Crafts' }), h('span', { text: fmt(n.crafts) })));
+		const total = r.cost * n.crafts;
+		if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Costs' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
+		if (r.bonus) list.append(h('li', {}, h('span', { text: 'Plus' }), h('span', { class: 'money-in', text: `${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}` })));
+		for (const ing of r.ins) list.append(h('li', {}, h('span', { text: itemName(ing.id) }), h('span', { text: fmt(ing.n * n.crafts) })));
+	} else {
+		const where = n.kind === 'storage' ? 'Take from storage' : n.kind === 'missing' ? 'Not enough, and nothing makes it' : 'Keep in storage';
+		card.append(h('div', { class: 'where', text: where }), h('div', { class: 'what', text: n.label }));
+		for (const [id, amount] of n.takes) list.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) })));
+	}
+	card.append(list);
+	return card;
+}
+
+function renderGraph() {
+	S.graphDirty = false;
+	const columns = $('#columns');
+	const svg = $('#edges');
+	columns.textContent = '';
+	svg.textContent = '';
+	const result = S.result;
+	$('#empty').hidden = !!(result && result.nodes.length);
+	if (!result || !result.nodes.length) return;
+
+	for (const col of layoutColumns(result)) columns.append(h('div', { class: 'col' }, col.map(cardFor)));
+	applyView();
+	requestAnimationFrame(drawEdges);
+}
+
+function drawEdges() {
+	const svg = $('#edges');
+	const canvas = $('#canvas');
+	svg.textContent = '';
+	const base = canvas.getBoundingClientRect();
+	const k = S.view.k;
+	svg.setAttribute('width', canvas.scrollWidth);
+	svg.setAttribute('height', canvas.scrollHeight);
+	const rect = (key) => {
+		const el = canvas.querySelector(`.card[data-key="${CSS.escape(key)}"]`);
+		if (!el) return null;
+		const r = el.getBoundingClientRect();
+		return { x: (r.left - base.left) / k, y: (r.top - base.top) / k, w: r.width / k, h: r.height / k };
+	};
+	const ns = 'http://www.w3.org/2000/svg';
+	for (const e of S.result.edges) {
+		const a = rect(e.from);
+		const b = rect(e.to);
+		if (!a || !b) continue;
+		const from = S.result.nodes.find((n) => n.key === e.from);
+		const color = from?.recipe?.color || (from?.kind === 'storage' ? '#49a86f' : from?.kind === 'missing' ? '#e0584f' : '#98a2a8');
+		const x1 = a.x + a.w;
+		const y1 = a.y + Math.min(a.h / 2, 40);
+		const x2 = b.x;
+		const y2 = b.y + Math.min(b.h / 2, 40);
+		const dx = Math.max(40, (x2 - x1) / 2);
+		const path = document.createElementNS(ns, 'path');
+		path.setAttribute('d', `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`);
+		path.setAttribute('stroke', color);
+		svg.append(path);
+		const label = document.createElementNS(ns, 'text');
+		label.setAttribute('x', x2 - 8);
+		label.setAttribute('y', y2 - 5);
+		label.setAttribute('text-anchor', 'end');
+		label.textContent = `${itemName(e.id)} ${fmt(e.n)}`;
+		svg.append(label);
+	}
+}
+
+function applyView() {
+	$('#canvas').style.transform = `translate(${S.view.x}px, ${S.view.y}px) scale(${S.view.k})`;
+}
+
+function setupPanZoom() {
+	const vp = $('#viewport');
+	let drag = null;
+	vp.addEventListener('wheel', (e) => {
+		e.preventDefault();
+		const r = vp.getBoundingClientRect();
+		const mx = e.clientX - r.left;
+		const my = e.clientY - r.top;
+		const k2 = Math.min(2.5, Math.max(0.2, S.view.k * (e.deltaY > 0 ? 0.9 : 1.1)));
+		S.view.x = mx - ((mx - S.view.x) * k2) / S.view.k;
+		S.view.y = my - ((my - S.view.y) * k2) / S.view.k;
+		S.view.k = k2;
+		applyView();
+	}, { passive: false });
+	vp.addEventListener('mousedown', (e) => {
+		if (e.button !== 0) return;
+		drag = { x: e.clientX, y: e.clientY, vx: S.view.x, vy: S.view.y, moved: false };
+	});
+	window.addEventListener('mousemove', (e) => {
+		if (!drag) return;
+		const dx = e.clientX - drag.x;
+		const dy = e.clientY - drag.y;
+		if (Math.abs(dx) + Math.abs(dy) > 4) {
+			drag.moved = true;
+			vp.classList.add('dragging');
+		}
+		if (drag.moved) {
+			S.view.x = drag.vx + dx;
+			S.view.y = drag.vy + dy;
+			applyView();
+		}
+	});
+	window.addEventListener('mouseup', (e) => {
+		if (!drag) return;
+		const wasClick = !drag.moved;
+		drag = null;
+		vp.classList.remove('dragging');
+		if (!wasClick) return;
+		const card = e.target.closest?.('.card');
+		if (card) setPinned(card.dataset.key === S.pinned ? null : card.dataset.key);
+	});
+	vp.addEventListener('dblclick', () => {
+		S.view = { x: 30, y: 30, k: 1 };
+		applyView();
+	});
+}
+
+// ---------- Pinned panel ----------
+function setPinned(key) {
+	S.pinned = key;
+	store.set('pinned', key);
+	S.recipeFiredForMenu = true; // don't fire auto-recipe into an already-open menu
+	document.querySelectorAll('.card.pinned').forEach((c) => c.classList.remove('pinned'));
+	if (key) document.querySelector(`.card[data-key="${CSS.escape(key)}"]`)?.classList.add('pinned');
+	renderPin();
+}
+
+function pinnedNode() {
+	return S.pinned && S.result ? S.result.nodes.find((n) => n.key === S.pinned) : null;
+}
+
+function renderPin() {
+	const box = $('#pin');
+	const n = pinnedNode();
+	box.textContent = '';
+	box.hidden = !n;
+	if (!n) return;
+	box.style.removeProperty('--stripe');
+	box.append(h('button', { class: 'x pin-close', title: 'Unpin', text: '×', onclick: () => setPinned(null) }));
+
+	if (n.kind !== 'recipe') {
+		box.append(h('div', { class: 'where', text: n.kind === 'storage' ? 'Take from storage' : n.kind === 'missing' ? 'Needs sourcing' : 'Keep' }), h('h2', { text: n.label }));
+		const ul = h('ul');
+		for (const [id, amount] of n.takes) ul.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) })));
+		box.append(h('div', { class: 'load' }, ul));
+		return;
+	}
+
+	const r = n.recipe;
+	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
+	box.style.setProperty('--stripe', r.color);
+	box.append(
+		h('div', { class: 'where', text: locShort(r.loc) }),
+		h('h2', { text: r.name }),
+		h(
+			'div',
+			{ class: 'pin-meta' },
+			h('div', {}, h('small', { text: 'Runs' }), h('b', { text: Number.isFinite(info.runs) ? fmt(info.runs) : '—' })),
+			h('div', {}, h('small', { text: 'Crafts' }), h('b', { text: fmt(n.crafts) })),
+			h('div', {}, h('small', { text: 'This run' }), h('b', { text: fmt(info.runCrafts) }))
+		)
+	);
+	if (!Number.isFinite(info.runs)) box.append(h('p', { class: 'hint', text: 'One craft is heavier than all your vehicles combined. Pick a bigger trailer.' }));
+
+	for (const load of info.loads) {
+		if (!load.items.length) continue;
+		const v = S.vehicles[load.vehicle];
+		box.append(
+			h(
+				'div',
+				{ class: 'load' },
+				h('h3', { text: v.name }),
+				h('ul', {}, load.items.map((x) => h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: fmt(x.n) }))))
+			)
+		);
+	}
+	if (r.bonus) box.append(h('p', { class: 'path', text: `Also earns ${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}.` }));
+	if (r.path.length) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
+
+	const auto = S.settings.automation;
+	box.append(
+		h(
+			'div',
+			{ class: 'pin-actions' },
+			h('button', { class: 'btn primary', text: 'Load this run', disabled: !auto || S.busy || !r.ins.length, title: auto ? 'Stand at a storage with its menu open' : 'Turn on automation first', onclick: loadPinned }),
+			h('button', { class: 'btn', text: 'Empty trunks', disabled: !auto || S.busy, onclick: dumpTrunks })
+		)
+	);
+	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
+}
+
+// ---------- Menu automation ----------
+function menuSnapshot() {
+	return JSON.stringify([S.game.menu, S.game.menu_open, S.game.prompt, S.game.menu_choices]);
+}
+
+function findChoice(match) {
+	const choices = S.game.menu_choices;
+	if (!S.game.menu_open || !Array.isArray(choices)) return null;
+	for (const c of choices) {
+		const text = Array.isArray(c) ? c[0] : c;
+		if (typeof text === 'string' && choiceMatches(text, match)) return text;
+	}
+	return null;
+}
+
+async function waitFor(test, ms) {
+	const start = Date.now();
+	while (!test()) {
+		if (Date.now() - start > ms) return false;
+		await sleep(15);
+	}
+	return true;
+}
+
+async function clickStep(step) {
+	let choice = null;
+	const found = await waitFor(() => (choice = findChoice(step.match)), 3000);
+	if (!found) throw new Error(`couldn't find “${step.match.text ?? '…' + step.match.suffix}” in the menu`);
+	const before = menuSnapshot();
+	send('forceMenuChoice', { choice, mod: step.mod || 0 });
+	if (step.fireAndWait) return sleep(150);
+	await waitFor(() => menuSnapshot() !== before, 2000);
+	await sleep(10);
+}
+
+async function submitAmount(n) {
+	const shown = await waitFor(() => S.game.prompt === true, 3000);
+	if (!shown) throw new Error('no amount prompt appeared');
+	for (let i = 0; i < 40 && S.game.prompt; i++) {
+		send('forceSubmitValue', { value: String(n) });
+		await sleep(60);
+	}
+}
+
+async function runActions(label, actions) {
+	if (S.busy) return log('Already running an action.', 'warn');
+	if (!actions.length) return notify('Nothing to do.');
+	S.busy = label + '…';
+	renderPin();
+	let done = 0;
+	try {
+		for (const [i, action] of actions.entries()) {
+			let clicked = 0;
+			try {
+				for (const step of action.steps) {
+					await clickStep(step);
+					clicked++;
+				}
+				if (action.amount > 0) await submitAmount(action.amount);
+				done++;
+				await sleep(20);
+				if (S.game.menu_open) {
+					send('forceMenuBack');
+					await sleep(40);
+				}
+			} catch (e) {
+				log(`${action.label}: ${e.message}`, 'warn');
+				if (clicked === 0 && i === 0) {
+					notify('Open the storage menu first.');
+					break;
+				}
+				for (let b = 0; b < clicked; b++) {
+					send('forceMenuBack');
+					await sleep(60);
+				}
+			}
+		}
+		notify(`${label}: ${done} of ${actions.length} done.`);
+		log(`${label}: ${done} of ${actions.length} done.`);
+	} finally {
+		S.busy = false;
+		renderPin();
+	}
+}
+
+function loadedTrunks() {
+	return S.vehicles.filter((v) => {
+		const s = S.storages.get(v.id);
+		return !s || [...s.items.values()].some((n) => n > 0);
+	});
+}
+
+function loadPinned() {
+	if (!S.settings.automation) return log('Turn on automation to load trunks.', 'warn');
+	const n = pinnedNode();
+	if (!n || n.kind !== 'recipe') return notify('Pin a recipe first.');
+	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
+	const actions = S.settings.dumpFirst ? loadedTrunks().map(dumpAction) : [];
+	for (const load of info.loads) {
+		const v = S.vehicles[load.vehicle];
+		for (const x of load.items) actions.push(takeAction(v, x.id, x.n));
+	}
+	runActions('Load ' + n.recipe.name, actions);
+}
+
+function dumpTrunks() {
+	if (!S.settings.automation) return log('Turn on automation to empty trunks.', 'warn');
+	runActions('Empty trunks', loadedTrunks().map(dumpAction));
+}
+
+function takeMax() {
+	if (!S.settings.automation) return log('Turn on automation to take items.', 'warn');
+	const id = S.settings.takeItem;
+	if (!id) return notify('Choose an item to take first.');
+	const actions = S.settings.dumpFirst ? loadedTrunks().map(dumpAction) : [];
+	for (const v of S.vehicles) actions.push(takeAction(v, id, 'max'));
+	runActions('Take ' + itemName(id), actions);
+}
+
+// Auto-recipe: once per menu opening, click through the pinned recipe's path.
+async function onMenu(prevOpen) {
+	if (!S.game.menu_open) {
+		S.recipeFiredForMenu = false;
+		return;
+	}
+	if (prevOpen === false || prevOpen == null) S.recipeFiredForMenu = false;
+	const s = S.settings;
+	if (!s.automation || !s.autoRecipe || S.busy || S.recipeFiredForMenu) return;
+	const n = pinnedNode();
+	const path = n?.kind === 'recipe' ? n.recipe.path : [];
+	if (!path.length || !findChoice({ text: path[0] })) return;
+	S.recipeFiredForMenu = true;
+	S.busy = 'Selecting ' + n.recipe.name + '…';
+	try {
+		for (const step of path) await clickStep({ match: { text: step } });
+	} catch (e) {
+		log('Auto-recipe: ' + e.message, 'warn');
+	} finally {
+		S.busy = false;
+		renderPin();
+	}
+}
+
+// Auto-trunk: when a craft fails for lack of room or items, open the trunk
+// that can cover the pinned recipe so the next attempt uses it.
+const FULL = ['Inventory full.', 'Item(s) weighs more than your total inventory size.'];
+const EMPTY = ['Not enough items'];
+
+async function onNotification(raw) {
+	const note = stripColors(stripTags(raw));
+	const s = S.settings;
+	if (!s.automation || !s.autoTrunk || S.busy) return;
+	const isFull = FULL.includes(note);
+	const isEmpty = EMPTY.includes(note);
+	if (!isFull && !isEmpty) return;
+	if (Date.now() - S.lastAutoTrunk < 1500) return;
+	const n = pinnedNode();
+	if (n?.kind !== 'recipe') return;
+	const r = n.recipe;
+	const inv = S.storages.get('inventory')?.items || new Map();
+	let best = null;
+	for (const v of S.vehicles) {
+		if (v.id === 'inventory') continue;
+		const items = S.storages.get(v.id)?.items || new Map();
+		let score;
+		if (isEmpty) {
+			score = Math.min(...r.ins.map((x) => ((items.get(x.id) || 0) + (inv.get(x.id) || 0)) / x.n));
+		} else {
+			const used = [...items].reduce((sum, [id, k]) => sum + itemWeight(id) * k, 0);
+			const { outW } = unitWeights(r);
+			score = outW > 0 ? Math.floor((v.cap - used) / outW) : 0;
+		}
+		if (score > 0 && (!best || score > best.score)) best = { v, score };
+	}
+	if (!best) return log('Auto-trunk: no trunk can cover this recipe.', 'warn');
+	S.lastAutoTrunk = Date.now();
+	if (S.game.menu_open) {
+		send('forceMenuBack');
+		await sleep(60);
+	}
+	send('sendCommand', { command: best.v.cab ? 'rm_cabtrunk' : 'rm_trunk' });
+	log(`Auto-trunk: opened ${best.v.name}.`);
+}
+
+// ---------- Sidebar ----------
+function renderTargets() {
+	const box = $('#targets');
+	box.textContent = '';
+	const options = plannableItems();
+	S.targets.forEach((t, i) => {
+		const select = h('select', { onchange: (e) => updateTarget(i, { id: e.target.value }) }, options.map((id) => h('option', { value: id, text: itemName(id) })));
+		select.value = t.id;
+		box.append(
+			h(
+				'div',
+				{ class: 'target' },
+				select,
+				h('input', { type: 'number', min: '1', value: String(t.n), onchange: (e) => updateTarget(i, { n: Math.max(1, parseInt(e.target.value, 10) || 1) }) }),
+				h('button', { class: 'x', title: 'Remove', text: '×', onclick: () => removeTarget(i) })
+			)
+		);
+	});
+}
+
+function updateTarget(i, patch) {
+	S.targets[i] = { ...S.targets[i], ...patch };
+	store.set('targets', S.targets);
+	replan();
+}
+
+function removeTarget(i) {
+	S.targets.splice(i, 1);
+	store.set('targets', S.targets);
+	renderTargets();
+	replan();
+}
+
+function bindSettings() {
+	const trailer = $('#trailer');
+	trailer.append(h('option', { value: '', text: 'None' }));
+	for (const v of Object.values(VEHICLES).filter((v) => !v.cab).sort((a, b) => a.cap - b.cap)) {
+		trailer.append(h('option', { value: v.id, text: `${v.name} (${fmt(v.cap)} kg)` }));
+	}
+	const take = $('#takeItem');
+	take.append(h('option', { value: '', text: 'Choose…' }));
+	for (const id of Object.keys(ITEMS).sort((a, b) => itemName(a).localeCompare(itemName(b)))) take.append(h('option', { value: id, text: itemName(id) }));
+
+	document.querySelectorAll('[data-setting]').forEach((el) => {
+		const key = el.dataset.setting;
+		if (el.type === 'checkbox') el.checked = !!S.settings[key];
+		else el.value = S.settings[key] ?? '';
+		el.addEventListener('change', () => {
+			S.settings[key] = el.type === 'checkbox' ? el.checked : el.value.trim();
+			saveSettings();
+			if (!['apiKey', 'userId', 'altApi', 'takeItem'].includes(key)) replan();
+		});
+	});
+}
+
+// ---------- Modals ----------
+function openModal(id) {
+	$(id).hidden = false;
+}
+function closeModals() {
+	document.querySelectorAll('.modal').forEach((m) => (m.hidden = true));
+}
+
+function renderStorages() {
+	const box = $('#storageList');
+	const q = $('#storageSearch').value.trim().toLowerCase();
+	box.textContent = '';
+	const list = [...S.storages.values()].sort((a, b) => storagePrio(b) - storagePrio(a) || a.name.localeCompare(b.name));
+	if (!list.length) {
+		box.append(h('p', { class: 'hint', text: 'No storages yet. Use “Refresh storages”, or open chests in-game and they appear here.' }));
+		return;
+	}
+	for (const s of list) {
+		const items = [...s.items].filter(([id, n]) => n > 0 && (!q || itemName(id).toLowerCase().includes(q))).sort((a, b) => b[1] - a[1]);
+		if (q && !items.length) continue;
+		const prio = h('input', {
+			type: 'number',
+			value: String(storagePrio(s)),
+			title: 'Higher is used first. Below 0 is ignored.',
+			onchange: (e) => {
+				const v = parseInt(e.target.value, 10);
+				if (Number.isNaN(v) || v === s.prio) delete S.storagePrio[s.id];
+				else S.storagePrio[s.id] = v;
+				store.set('storagePrio', S.storagePrio);
+				replan();
+			},
+		});
+		const when = s.updated ? new Date(s.updated).toLocaleString() : 'unknown';
+		box.append(
+			h(
+				'div',
+				{ class: 'group' },
+				h('h3', {}, h('span', { text: s.name }), h('small', { class: 'hint', text: `${s.source === 'game' ? 'in-game' : 'API'}, ${when}` })),
+				h('div', { class: 'line-item' }, h('span', { text: 'Priority' }), prio),
+				items.length
+					? h('div', { class: 'items' }, items.map(([id, n]) => h('div', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(n) }))))
+					: h('p', { class: 'hint', text: 'Empty.' })
+			)
+		);
+	}
+}
+
+function renderRecipes() {
+	const box = $('#recipeList');
+	const q = $('#recipeSearch').value.trim().toLowerCase();
+	box.textContent = '';
+	const describe = (r) => {
+		const ins = r.ins.map((x) => `${x.n} ${itemName(x.id)}`).join(', ');
+		let outs = r.type === 'export' ? `sell for ${money(-r.cost)}` : r.outs.map((x) => `${x.n} ${itemName(x.id)}`).join(', ');
+		if (r.bonus) outs += ` + ${r.bonus.n} ${r.bonus.name}`;
+		return ins ? `${ins} → ${outs}` : outs;
+	};
+	for (const loc of LOCATIONS) {
+		const recipes = loc.recipes.filter((r) => !q || (loc.name + ' ' + r.name + ' ' + describe(r)).toLowerCase().includes(q));
+		if (!recipes.length) continue;
+		box.append(
+			h(
+				'div',
+				{ class: 'group' },
+				h('h3', {}, h('span', { class: 'swatch', style: `background:${loc.color}` }), h('span', { text: loc.name })),
+				recipes.map((r) =>
+					h(
+						'div',
+						{ class: 'line-item' },
+						h('div', {}, h('span', { text: r.name }), h('small', { text: describe(r) })),
+						h('input', {
+							type: 'number',
+							value: String(S.recipePrio[r.key] ?? r.prio),
+							onchange: (e) => {
+								const v = parseInt(e.target.value, 10);
+								if (Number.isNaN(v) || v === r.defaultPrio) delete S.recipePrio[r.key];
+								else S.recipePrio[r.key] = v;
+								store.set('recipePrio', S.recipePrio);
+								replan();
+							},
+						})
+					)
+				)
+			)
+		);
+	}
+}
+
+// ---------- Start-up ----------
+function init() {
+	bindSettings();
+	renderTargets();
+	setupPanZoom();
+
+	$('#toggleSidebar').onclick = () => {
+		document.body.classList.toggle('sidebar-hidden');
+		requestAnimationFrame(drawEdges);
+	};
+	$('#addTarget').onclick = () => {
+		S.targets.push({ id: 'crafted_jewelry', n: 100 });
+		store.set('targets', S.targets);
+		renderTargets();
+		replan();
+	};
+	$('#refresh').onclick = refreshFromApi;
+	$('#dumpBtn').onclick = dumpTrunks;
+	$('#takeBtn').onclick = takeMax;
+	$('#openStorages').onclick = () => {
+		renderStorages();
+		openModal('#storagesModal');
+	};
+	$('#openRecipes').onclick = () => {
+		renderRecipes();
+		openModal('#recipesModal');
+	};
+	$('#storageSearch').oninput = renderStorages;
+	$('#recipeSearch').oninput = renderRecipes;
+	$('#resetPrio').onclick = () => {
+		S.recipePrio = {};
+		store.set('recipePrio', {});
+		renderRecipes();
+		replan();
+	};
+	$('#resetAll').onclick = () => {
+		if (!confirm('Clear your settings, API key, storages and plan?')) return;
+		Object.keys(localStorage).filter((k) => k.startsWith(NS)).forEach((k) => localStorage.removeItem(k));
+		location.reload();
+	};
+	document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = closeModals));
+	document.querySelectorAll('.modal').forEach((m) => m.addEventListener('mousedown', (e) => e.target === m && closeModals()));
+
+	document.addEventListener('keydown', (e) => {
+		if (e.key !== 'Escape') return;
+		const open = [...document.querySelectorAll('.modal')].some((m) => !m.hidden);
+		if (open) return closeModals();
+		send('pin');
+	});
+
+	replan();
+	log('Ready.');
+
+	setTimeout(() => {
+		// One full read at start-up; after this the game pushes changes.
+		send('getData');
+		send('registerTrigger', { trigger: TRIGGERS.load, name: 'Haul Planner: load this run' });
+		send('registerTrigger', { trigger: TRIGGERS.dump, name: 'Haul Planner: empty trunks' });
+		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
+	}, 250);
+	setTimeout(() => (S.triggersArmed = true), 2000);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+})();
+		</script>
+	</body>
+</html>
