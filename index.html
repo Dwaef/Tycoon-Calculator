@@ -715,6 +715,28 @@ body.overlay #pin .pin-close {
 	}
 }
 
+.section-title {
+	margin: 6px 0 4px;
+	font-size: 15px;
+	color: var(--amber);
+}
+
+.sd-tag {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 0 5px;
+	border: 1px solid var(--amber);
+	border-radius: 3px;
+	color: var(--amber);
+	font-size: 10.5px;
+	font-weight: 700;
+	vertical-align: 1px;
+}
+
+.group h3 .toggle {
+	flex: 1;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1053,7 +1075,8 @@ for (const [id, v] of Object.entries(VEHICLES)) {
 //   opts.p: default priority, opts.path: menu path "A > B", opts.hm: highest
 //   multiplier, opts.hp: its menu path, opts.exp: exported item for sales,
 //   opts.bonus: [n, name] extra reward shown on the card (not planned),
-//   opts.unverified: menu path not yet confirmed in-game
+//   opts.unverified: menu path not yet confirmed in-game,
+//   opts.sd: name of the SD card that unlocks this recipe
 // Checked against the TT wiki on 26 Sep 2026.
 function parseList(s) {
 	if (!s) return [];
@@ -1090,6 +1113,7 @@ function R(name, type, cost, ins, outs, o = {}) {
 		hmPath,
 		bonus: o.bonus ? { name: o.bonus[1], n: o.bonus[0] } : null,
 		unverified: !!o.unverified,
+		sd: o.sd || null,
 	};
 }
 const L = (name, color, recipes) => ({ name, color, recipes });
@@ -1114,8 +1138,7 @@ const LOCATIONS = [
 	fishImporter('Paleto Cove Fish Importer'),
 	fishImporter('San Chianski Airport Fish Importer'),
 	L('CollinsCo Dealer', '#7a8791', [
-		R('CollinsCo Boat Vouchers', 'e', -1500000, '100 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Vouchers x100', hm: 10, hp: 'CollinsCo Boat Vouchers x1000' }),
-		R('CollinsCo Boat Voucher', 'e', -150000, '10 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Voucher x10' }),
+		R('Sell CollinsCo Boat Vouchers', 'e', -150000, '10 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Voucher x10', hm: 100, hp: 'CollinsCo Boat Vouchers x1000' }),
 	]),
 	L('House Construction Site', '#9b6bc9', [
 		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'Concrete Delivery Token'] }),
@@ -1154,15 +1177,15 @@ const LOCATIONS = [
 	]),
 	L('Trucking: Clucking Bell Farms', '#7a8791', [
 		R('Pack Fish Meat', 'r', 0, '150 fish_meat', '1 fridge_meat', { hm: 10 }),
-		R('Pack Crispy Fish Meat', 'r', 0, '1000 fish_meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Fish Meat x10' }),
+		R('Pack Crispy Fish Meat', 'r', 0, '1000 fish_meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Fish Meat x10', sd: 'Crispy Fish' }),
 		R('Pack Meat', 'r', 0, '30 meat', '1 fridge_meat', { hm: 10 }),
-		R('Pack Crispy Meat', 'r', 0, '200 meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Meat x10' }),
+		R('Pack Crispy Meat', 'r', 0, '200 meat, 20 tcargodust', '10 fridge_meat', { p: -1, path: 'Pack Crispy Meat x10', sd: 'Crispy Meat' }),
 	]),
 	L('Trucking: Davis Mega Mall', '#9b6bc9', [R('Sell Propane', 'e', -10000, '1 petrochem_propane', '', { hm: 10 })]),
 	L('Trucking: Deep Quarry', '#a9b1b8', [
-		R('Recycle Ore Mix', 'r', 0, '15 scrap_ore, 1 military_explosives', '90 refined_sand', { p: -1 }),
+		R('Recycle Ore Mix', 'r', 0, '15 scrap_ore, 1 military_explosives', '90 refined_sand', { p: -1, sd: 'Ore Mix Recycling' }),
 		R('Use Explosives', 'r', 0, '1 military_explosives', '20 refined_sand, 30 scrap_gravel', { p: -10 }),
-		R('Gravel Pulverizing', 'r', 0, '1 military_explosives, 20 scrap_gravel', '100 refined_sand', { p: -1 }),
+		R('Gravel Pulverizing', 'r', 0, '1 military_explosives, 20 scrap_gravel', '100 refined_sand', { p: -1, sd: 'Gravel Pulverizing' }),
 	]),
 	L('Trucking: Electronics Store', '#6fbf73', [
 		shop('Deliver Copper Wire Spool', 'crafted_copperwire', -55000),
@@ -1179,7 +1202,7 @@ const LOCATIONS = [
 	]),
 	L('Trucking: Filtering Plant', '#d4a73e', [
 		R('Mix Concrete', 'r', 15000, '1 liquid_water, 5 crafted_cement', '1 crafted_concrete', { hm: 2 }),
-		R('Conveyor Filtering', 'r', 30000, '1 mining_token_copper, 1 mining_token_iron', '1 scrap_emerald, 3 scrap_ore, 10 scrap_gravel', { p: -1 }),
+		R('Conveyor Filtering', 'r', 30000, '1 mining_token_copper, 1 mining_token_iron', '1 scrap_emerald, 3 scrap_ore, 10 scrap_gravel', { p: -1, sd: 'Conveyor Rental' }),
 		R('Filter Toxic Waste', 'r', 15000, '1 recycled_waste', '2 scrap_mercury, 2 scrap_lead, 4 scrap_acid', { hm: 3 }),
 		R('Filter Gravel', 'r', 15000, '10 scrap_gravel', '6 refined_sand, 4 refined_flint', { hm: 6 }),
 		R('Filter Quarry Rubble', 'r', 15000, '1 recycled_rubble', '1 scrap_emerald, 4 scrap_ore, 12 scrap_gravel', { hm: 2 }),
@@ -1204,11 +1227,11 @@ const LOCATIONS = [
 	L('Trucking: Logging Camp', '#b0623d', [R('Collect Logs', 'i', 7500, '', '1 tcargologs', { hm: 10 })]),
 	L('Trucking: LS Factory', '#b23a3a', [
 		R('Create Rebar', 'r', 5000, '2 refined_bronze, 6 refined_amalgam', '2 crafted_rebar', { path: 'Create Rebar > Create Rebar', hm: 2 }),
-		R('Titanium Reinforcement', 'r', 5000, '6 military_titanium', '2 crafted_rebar', { p: -1, path: 'Create Rebar > Titanium Reinforcement' }),
+		R('Titanium Reinforcement', 'r', 5000, '6 military_titanium', '2 crafted_rebar', { p: -1, path: 'Create Rebar > Titanium Reinforcement', sd: 'Titanium Reinforcement' }),
 		R('Create Jewelry', 'r', 5000, '1 scrap_emerald, 2 refined_gold', '2 crafted_jewelry', { path: 'Create Jewelry > Create Jewelry' }),
-		R('Titanium Jewelry', 'r', 5000, '1 military_titanium, 4 refined_gold', '4 crafted_jewelry', { p: -1, path: 'Create Jewelry > Titanium Jewelry' }),
+		R('Titanium Jewelry', 'r', 5000, '1 military_titanium, 4 refined_gold', '4 crafted_jewelry', { p: -1, path: 'Create Jewelry > Titanium Jewelry', sd: 'Titanium Jewelry' }),
 		R('Create Fiberglass Spool', 'r', 5000, '1 refined_planks, 4 refined_glass, 8 scrap_plastic', '2 crafted_fiberglass', { path: 'Create Fiberglass Spool > Create Fiberglass Spool', hm: 10 }),
-		R('Create Cardboard', 'r', 5000, '1 liquid_water, 50 tcargodust', '5 crafted_cardboard', { p: -1, path: 'Craft Cardboard > Create Cardboard' }),
+		R('Create Cardboard', 'r', 5000, '1 liquid_water, 50 tcargodust', '5 crafted_cardboard', { p: -1, path: 'Craft Cardboard > Create Cardboard', sd: 'Cardboard Manufacturing' }),
 		R('Create Batteries', 'r', 5000, '4 refined_solder, 2 refined_zinc, 8 scrap_acid', '2 crafted_batteries', { path: 'Create Batteries > Create Batteries', hm: 5 }),
 		R('Create Copper Wire Spool', 'r', 5000, '1 refined_planks, 4 refined_copper', '2 crafted_copperwire', { path: 'Create Copper Wire Spool > Create Copper Wire Spool', hm: 5 }),
 		R('Create Circuit Boards', 'r', 5000, '1 crafted_copperwire, 2 refined_solder, 10 scrap_plastic', '2 crafted_circuit', { path: 'Craft Circuit Boards > Create Circuit Boards', hm: 10 }),
@@ -1220,11 +1243,11 @@ const LOCATIONS = [
 		R('Refine Tin', 'r', 1000, '2 scrap_tin', '1 refined_tin', { p: 1, path: 'Refine Tin > Refine Tin x1', hm: 20 }),
 		R('Refine Solder', 'r', 1000, '2 scrap_lead, 2 refined_aluminum', '8 refined_solder', { p: 1, path: 'Refine Solder > Refine Solder', hm: 4 }),
 		R('Refine Gold', 'r', 1000, '10 scrap_gold', '5 refined_gold', { path: 'Refine Gold > Refine Gold x10' }),
-		R('Substitute Gold', 'r', 1000, '10 petrochem_sulfur, 25 refined_bronze, 2 petrochem_petrol', '40 scrap_gold', { p: -1, path: 'Refine Gold > Substitute Gold' }),
+		R('Substitute Gold', 'r', 1000, '10 petrochem_sulfur, 25 refined_bronze, 2 petrochem_petrol', '40 scrap_gold', { p: -1, path: 'Refine Gold > Substitute Gold', sd: 'Substitute Gold' }),
 		R('Refine Bronze Alloy', 'r', 1000, '1 scrap_tin, 1 scrap_aluminum, 2 scrap_copper', '2 refined_bronze', { p: 1, path: 'Refine Bronze Alloy > Refine Bronze Alloy x1', hm: 10 }),
 		R('Refine Raw Ore Mix', 'r', 1000, '2 scrap_ore', '1 refined_zinc, 1 refined_copper', { path: 'Refine Raw Ore Mix > Refine Raw Ore Mix x1', hm: 10 }),
-		R('Copper Alloy', 'r', 10000, '20 scrap_ore, 10 petrochem_sulfur', '20 refined_copper', { p: -1, path: 'Refine Raw Ore Mix > Copper Alloy' }),
-		R('Zinc Alloy', 'r', 10000, '20 scrap_ore, 2 petrochem_propane', '20 refined_zinc', { p: -1, path: 'Refine Raw Ore Mix > Zinc Alloy' }),
+		R('Copper Alloy', 'r', 10000, '20 scrap_ore, 10 petrochem_sulfur', '20 refined_copper', { p: -1, path: 'Refine Raw Ore Mix > Copper Alloy', sd: 'Copper Alloy' }),
+		R('Zinc Alloy', 'r', 10000, '20 scrap_ore, 2 petrochem_propane', '20 refined_zinc', { p: -1, path: 'Refine Raw Ore Mix > Zinc Alloy', sd: 'Zinc Alloy' }),
 		R('Refine Amalgam', 'r', 1000, '2 refined_tin, 2 scrap_mercury', '2 refined_amalgam', { p: 1, path: 'Refine Amalgam > Refine Amalgam', hm: 10 }),
 		R('Refine Aluminum', 'r', 1000, '2 scrap_aluminum', '1 refined_aluminum', { p: 1, path: 'Refine Aluminum > Refine Aluminum x1', hm: 10 }),
 		R('Refine Glass', 'r', 1000, '1 refined_sand', '1 refined_glass', { p: 1, path: 'Refine Glass > Refine Glass x1', hm: 10 }),
@@ -1289,10 +1312,10 @@ const LOCATIONS = [
 	L('Trucking: Recycling Center', '#6fbf73', [R('Pick up Recycled Trash', 'i', 0, '', '1 recycled_trash', { hm: 3 })]),
 	L('Trucking: Refinery', '#6b7075', [
 		R('Refine Crude Oil', 'r', 10250, '1 petrochem_oil', '1 petrochem_diesel, 2 petrochem_petrol, 1 petrochem_kerosene', { hm: 2 }),
-		R('Create Asphalt', 'r', 10250, '1 petrochem_oil, 20 scrap_gravel', '20 petrochem_asphalt', { p: -1 }),
+		R('Create Asphalt', 'r', 10250, '1 petrochem_oil, 20 scrap_gravel', '20 petrochem_asphalt', { p: -1, sd: 'Asphalt Concrete Refining' }),
 		R('Refine Raw Gas', 'r', 10250, '1 petrochem_gas', '2 military_chemicals, 2 petrochem_propane, 1 petrochem_waste', { hm: 2 }),
 		R('Refine Rubber', 'r', 41000, '4 petrochem_oil', '4 petrochem_petrol, 4 mechanicals_rubber, 2 petrochem_diesel, 2 petrochem_kerosene'),
-		R('Refine Diluted Fuel', 'r', 10250, '3 petrochem_oil, 2 liquid_water', '3 petrochem_diesel, 3 petrochem_petrol, 20 petrochem_kerosene', { p: -1 }),
+		R('Refine Diluted Fuel', 'r', 10250, '3 petrochem_oil, 2 liquid_water', '3 petrochem_diesel, 3 petrochem_petrol, 20 petrochem_kerosene', { p: -1, sd: 'Diluted Fuel Refining' }),
 	]),
 	L('Trucking: Sandstone Collector', '#7a8791', [
 		sandstone('Scrap Lead', 3, 'scrap_lead'),
@@ -1308,10 +1331,10 @@ const LOCATIONS = [
 		sandstone('Flint', 1, 'refined_flint'),
 	]),
 	L('Trucking: Sawmill', '#8f4a28', [
-		R('Sawdust Filler Exploit', 'r', 2500, '5 tcargologs, 10 refined_sand', '100 tcargodust', { p: -1, path: 'Grind Sawdust > Sawdust Filler Exploit' }),
+		R('Sawdust Filler Exploit', 'r', 2500, '5 tcargologs, 10 refined_sand', '100 tcargodust', { p: -1, path: 'Grind Sawdust > Sawdust Filler Exploit', sd: 'Sawdust Filler Exploit' }),
 		R('Grind Sawdust', 'r', 500, '1 tcargologs', '10 tcargodust', { p: 1, path: 'Grind Sawdust > Grind Sawdust x1', hm: 5 }),
 		R('Mill Planks', 'r', 500, '1 tcargologs', '1 refined_planks, 2 tcargodust', { path: 'Mill Planks > Mill Planks x1', hm: 5 }),
-		R('Chipboard Planks', 'r', 2500, '5 tcargologs, 30 tcargodust', '15 refined_planks', { p: -1, path: 'Mill Planks > Chipboard Planks' }),
+		R('Chipboard Planks', 'r', 2500, '5 tcargologs, 30 tcargodust', '15 refined_planks', { p: -1, path: 'Mill Planks > Chipboard Planks', sd: 'Chipboard Planks' }),
 	]),
 	L('Trucking: Sorting Facility', '#2e7d32', [
 		R('Sort Recycled Electronics', 'r', 25000, '1 recycled_electronics', '1 scrap_gold, 8 scrap_copper, 12 scrap_plastic', { hm: 2 }),
@@ -1320,12 +1343,12 @@ const LOCATIONS = [
 	L('Trucking: Vehicle Factory', '#7a8791', [
 		R('Coil Rocket Voltic', 'r', 90110000, CAR_BASE + ', 15 crafted_fiberglass, 100 petrochem_kerosene', '1 upgrade_kit_voltic2'),
 		R('HVY Nightshark', 'r', 13780000, '2 mechanicals_vehicle_framework, 15 refined_glass, 2 mechanicals_chassis, 12 crafted_circuit, 25 crafted_fiberglass, 2 mechanicals_battery, 40 refined_amalgam, 60 military_titanium, 4 mechanicals_wheels, 1 liquid_water', '1 vehicle_shipment|nightshark|HVY Nightshark|car'),
-		R('10F', 'r', 22500000, CAR_BASE + ', 25 crafted_fiberglass', '1 vehicle_shipment|tenf|10F|car', { p: -1 }),
+		R('10F', 'r', 22500000, CAR_BASE + ', 25 crafted_fiberglass', '1 vehicle_shipment|tenf|10F|car', { p: -1, sd: '10F Blueprints' }),
 		R('Karin Futo', 'r', 220000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|futo|Karin Futo|car'),
 		R('Coil Savanna', 'r', 8380000, CAR_BASE + ', 3 mechanicals_battery_evb, 35 crafted_fiberglass', '1 vehicle_shipment|savanna|Coil Savanna|car'),
 		R('ZR-350', 'r', 1620000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|zr350|ZR-350|car'),
 		R('Hijak Vertice', 'r', 320000, CAR_BASE + ', 15 crafted_fiberglass', '1 vehicle_shipment|vertice|Hijak Vertice|car'),
-		R('Dundreary Landstalker XL', 'r', 32000000, '2 mechanicals_battery, 1 mechanicals_chassis, 1 mechanicals_vehicle_framework, 4 mechanicals_wheels, 10 crafted_circuit, 30 crafted_fiberglass, 50 refined_glass, 100 refined_amalgam', '1 vehicle_shipment|landstalker2|Landstalker XL|car'),
+		R('Dundreary Landstalker XL', 'r', 32000000, '2 mechanicals_battery, 1 mechanicals_chassis, 1 mechanicals_vehicle_framework, 4 mechanicals_wheels, 10 crafted_circuit, 30 crafted_fiberglass, 50 refined_glass, 100 refined_amalgam', '1 vehicle_shipment|landstalker2|Landstalker XL|car', { sd: 'Landstalker XL Blueprints' }),
 		R('Shipping Container', 'r', 1000000, '10 refined_planks, 10 tavi_hardened_steel', '1 shipping_crate_empty', { path: '1x Shipping Container' }),
 	]),
 	L('Trucking: Vehicle Parts', '#7a8791', [
@@ -1338,7 +1361,7 @@ const LOCATIONS = [
 		R('Jumper Cable', 'r', 3000, '1 mechanicals_rubber, 1 crafted_copperwire', '2 mechanicals_jumper_cable', { path: '' }),
 	]),
 	L('Trucking: Water Treatment Plant', '#3f95e8', [
-		R('Clean Waste Water', 'r', 5000, '2 petrochem_waste', '1 liquid_water', { p: -1 }),
+		R('Clean Waste Water', 'r', 5000, '2 petrochem_waste', '1 liquid_water', { p: -1, sd: 'Waste Water Cleaning' }),
 		R('Treat Waste Water', 'r', 5000, '1 petrochem_waste', '5 petrochem_sulfur', { hm: 2 }),
 		R('Treat Unfiltered Water', 'r', 5000, '1 liquid_water_raw, 1 scrap_acid', '1 liquid_water', { hm: 2 }),
 	]),
@@ -1455,7 +1478,9 @@ function solve(targets, storages, opts) {
 	const prioOf = opts.prioOf || ((r) => r.prio);
 	const producers = {};
 	const sellers = {};
+	const usable = opts.usable || (() => true);
 	for (const r of RECIPES) {
+		if (!usable(r)) continue;
 		const p = prioOf(r);
 		if (r.type === 'export') {
 			const cur = sellers[r.exp.id];
@@ -1754,6 +1779,7 @@ const S = {
 	targets: store.get('targets', [{ id: 'house', n: 1 }]),
 	recipePrio: store.get('recipePrio', {}),
 	storagePrio: store.get('storagePrio', {}),
+	sdOwned: store.get('sdOwned', {}),
 	storages: new Map(),
 	pinned: store.get('pinned', null),
 	game: {},
@@ -1904,7 +1930,16 @@ function storagePrio(s) {
 
 async function apiGet(path) {
 	const base = S.settings.altApi ? API_MIRROR : API_BASE;
-	const res = await fetch(base + path, { headers: { 'X-Tycoon-Key': S.settings.apiKey } });
+	let res;
+	try {
+		res = await fetch(base + path, { headers: { 'X-Tycoon-Key': S.settings.apiKey } });
+	} catch {
+		throw new Error(
+			S.settings.altApi
+				? "Couldn't reach the ttstats.eu mirror. It may be down; try again later."
+				: "Couldn't reach the TT API. It may be blocking requests from this page; try ticking “Use ttstats.eu mirror” under TT API."
+		);
+	}
 	if (!res.ok) {
 		if (res.status === 402) throw new Error('No API charges left on this key');
 		if (res.status === 403) throw new Error('The TT API rejected this key');
@@ -1975,7 +2010,7 @@ function replan() {
 				.map((s) => ({ id: s.id, name: s.name, prio: storagePrio(s), items: s.items }))
 		: [];
 	S.result = S.targets.length
-		? solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio })
+		? solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] })
 		: { nodes: [], edges: [], surplus: new Map() };
 
 	if (S.pinned && !S.result.nodes.some((n) => n.key === S.pinned)) setPinned(null);
@@ -2036,7 +2071,7 @@ function cardFor(n) {
 		card.style.setProperty('--stripe', r.color);
 		const info = nodeRuns(n, S.vehicles, S.settings.optimal);
 		card.append(
-			h('div', { class: 'where', text: locShort(r.loc) }),
+			h('div', { class: 'where', text: locShort(r.loc) }, r.sd ? h('span', { class: 'sd-tag', title: 'SD card: ' + r.sd, text: 'SD' }) : null),
 			h('div', { class: 'what', text: r.name }),
 			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'too heavy' })
 		);
@@ -2527,35 +2562,65 @@ function renderRecipes() {
 		const ins = r.ins.map((x) => `${x.n} ${itemName(x.id)}`).join(', ');
 		let outs = r.type === 'export' ? `sell for ${money(-r.cost)}` : r.outs.map((x) => `${x.n} ${itemName(x.id)}`).join(', ');
 		if (r.bonus) outs += ` + ${r.bonus.n} ${r.bonus.name}`;
-		return ins ? `${ins} → ${outs}` : outs;
+		let text = ins ? `${ins} → ${outs}` : outs;
+		if (r.hm > 1) text += ` (menu also offers up to x${r.hm})`;
+		return text;
 	};
-	for (const loc of LOCATIONS) {
-		const recipes = loc.recipes.filter((r) => !q || (loc.name + ' ' + r.name + ' ' + describe(r)).toLowerCase().includes(q));
-		if (!recipes.length) continue;
-		box.append(
-			h(
-				'div',
-				{ class: 'group' },
-				h('h3', {}, h('span', { class: 'swatch', style: `background:${loc.color}` }), h('span', { text: loc.name })),
-				recipes.map((r) =>
-					h(
-						'div',
-						{ class: 'line-item' },
-						h('div', {}, h('span', { text: r.name }), h('small', { text: describe(r) })),
-						h('input', {
-							type: 'number',
-							value: String(S.recipePrio[r.key] ?? r.prio),
-							onchange: (e) => {
-								const v = parseInt(e.target.value, 10);
-								if (Number.isNaN(v) || v === r.defaultPrio) delete S.recipePrio[r.key];
-								else S.recipePrio[r.key] = v;
-								store.set('recipePrio', S.recipePrio);
-								replan();
-							},
-						})
-					)
+	const matches = (r) => !q || (r.loc + ' ' + r.name + ' ' + describe(r) + ' ' + (r.sd || '')).toLowerCase().includes(q);
+	const prioInput = (r) =>
+		h('input', {
+			type: 'number',
+			value: String(S.recipePrio[r.key] ?? r.prio),
+			title: 'Higher is preferred',
+			onchange: (e) => {
+				const v = parseInt(e.target.value, 10);
+				if (Number.isNaN(v) || v === r.defaultPrio) delete S.recipePrio[r.key];
+				else S.recipePrio[r.key] = v;
+				store.set('recipePrio', S.recipePrio);
+				replan();
+			},
+		});
+	const line = (r, where) =>
+		h('div', { class: 'line-item' }, h('div', {}, h('span', { text: r.name }), h('small', { text: (where ? locShort(r.loc) + ': ' : '') + describe(r) })), prioInput(r));
+
+	// SD card recipes, grouped by card.
+	const cards = new Map();
+	for (const r of RECIPES) if (r.sd && matches(r)) (cards.get(r.sd) || cards.set(r.sd, []).get(r.sd)).push(r);
+	if (cards.size) {
+		box.append(h('h2', { class: 'section-title', text: 'Unlocked by SD cards' }), h('p', { class: 'hint', text: 'Tick the cards you have. The planner only uses these recipes once their card is ticked.' }));
+		for (const [card, recipes] of [...cards].sort((a, b) => a[0].localeCompare(b[0]))) {
+			const toggle = h('input', {
+				type: 'checkbox',
+				checked: !!S.sdOwned[card],
+				onchange: (e) => {
+					if (e.target.checked) S.sdOwned[card] = true;
+					else delete S.sdOwned[card];
+					store.set('sdOwned', S.sdOwned);
+					replan();
+				},
+			});
+			box.append(
+				h(
+					'div',
+					{ class: 'group' },
+					h('h3', {}, h('label', { class: 'toggle' }, toggle, h('span', { text: 'SD Card: ' + card }))),
+					recipes.map((r) => line(r, true))
 				)
-			)
+			);
+		}
+	}
+
+	// Everything else, grouped by location.
+	let heading = false;
+	for (const loc of LOCATIONS) {
+		const recipes = loc.recipes.filter((r) => !r.sd && matches(r));
+		if (!recipes.length) continue;
+		if (!heading) {
+			box.append(h('h2', { class: 'section-title', text: 'Standard recipes' }));
+			heading = true;
+		}
+		box.append(
+			h('div', { class: 'group' }, h('h3', {}, h('span', { class: 'swatch', style: `background:${loc.color}` }), h('span', { text: loc.name })), recipes.map((r) => line(r, false)))
 		);
 	}
 }
