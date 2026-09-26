@@ -847,6 +847,51 @@ body.overlay #pin .pin-close {
 	font-weight: 700;
 }
 
+#pin.guide::before {
+	background: var(--muted);
+}
+
+.guide-steps {
+	margin: 8px 0;
+	padding-left: 20px;
+	font-size: 13px;
+	display: grid;
+	gap: 6px;
+}
+
+body.overlay #pin.guide {
+	display: none;
+}
+
+.todo {
+	margin: 0 0 8px;
+	padding: 8px 10px;
+	border-radius: var(--radius-control);
+	border: 1px solid var(--line);
+}
+
+.todo h3 {
+	margin: 0 0 4px;
+	font-size: 13.5px;
+}
+
+.todo .hint {
+	margin: 0 0 8px;
+}
+
+.toggle.small {
+	font-size: 12.5px;
+	margin-top: 4px;
+}
+
+.pin-actions.finish {
+	margin-top: 4px;
+}
+
+body.overlay #pin .todo {
+	display: none;
+}
+
 		</style>
 	</head>
 	<body>
@@ -2482,8 +2527,26 @@ function renderPin() {
 	const box = $('#pin');
 	const n = pinnedNode();
 	box.textContent = '';
-	box.hidden = !n;
-	if (!n) return;
+	box.classList.toggle('guide', !n);
+	if (!n) {
+		// Nothing pinned: show how the workflow goes (hidden over gameplay).
+		box.hidden = !S.result || !S.result.nodes.length;
+		box.style.removeProperty('--stripe');
+		box.append(
+			h('h2', { text: 'How to use' }),
+			h(
+				'ol',
+				{ class: 'guide-steps' },
+				h('li', { text: 'Click a step on the route to pin it. Start with the one marked next, or whichever step you are on.' }),
+				h('li', { text: 'At a storage, open its menu and press “Load this run”. The planner takes the right amounts into each trunk.' }),
+				h('li', { text: 'Drive to the step’s location and open its menu. With auto-select on, the recipe is picked for you.' }),
+				h('li', { text: 'Press “Done, next step” to pin the following step.' })
+			),
+			h('p', { class: 'hint', text: 'The plan uses what is in your storages, so steps you have already finished shrink or disappear once those chests update.' })
+		);
+		return;
+	}
+	box.hidden = false;
 	box.style.removeProperty('--stripe');
 	box.append(h('button', { class: 'x pin-close', title: 'Unpin', text: '×', onclick: () => setPinned(null) }));
 
@@ -2524,23 +2587,50 @@ function renderPin() {
 		);
 	}
 	if (r.bonus) box.append(h('p', { class: 'path', text: `Also earns ${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}.` }));
-	if (r.path.length) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
-
-	box.append(...flowLists(n));
+	if (r.path.length && !S.settings.automation) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
 
 	const auto = S.settings.automation;
+	const hasLoad = r.ins.length > 0;
+	const section = (title, ...body) => h('div', { class: 'todo' }, h('h3', { text: title }), ...body);
+
+	if (!auto) {
+		box.append(
+			section(
+				'Automation is off',
+				h('p', { class: 'hint', text: 'You can still follow the numbers above by hand. Turn automation on to have the planner click through the menus for you.' }),
+				h('button', { class: 'btn primary', text: 'Turn on automation', onclick: () => setSetting('automation', true) })
+			)
+		);
+	} else {
+		if (hasLoad) {
+			box.append(
+				section(
+					'1. At a storage',
+					h('p', { class: 'hint', text: `Open the storage menu, then press Load. It ${S.settings.dumpFirst ? 'empties your trunks and ' : ''}takes the amounts above into each trunk.` }),
+					h('div', { class: 'pin-actions' }, h('button', { class: 'btn primary', text: 'Load this run', disabled: !!S.busy, onclick: loadPinned }), h('button', { class: 'btn', text: 'Only empty trunks', disabled: !!S.busy, onclick: dumpTrunks }))
+				)
+			);
+		}
+		box.append(
+			section(
+				(hasLoad ? '2. ' : '1. ') + 'At ' + locShort(r.loc),
+				h('p', { class: 'hint', text: r.path.length ? (S.settings.autoRecipe ? `Open the menu and ${r.path.join(' › ')} is selected for you.` : 'Open the menu and choose ' + r.path.join(' › ') + '.') + (r.unverified ? ' (Menu wording not yet confirmed in-game.)' : '') : 'Do this step by hand.' }),
+				toggleRow('autoRecipe', 'Auto-select this recipe'),
+				toggleRow('autoTrunk', 'Open the right trunk when inventory is full')
+			)
+		);
+	}
 	box.append(
 		h(
 			'div',
-			{ class: 'pin-actions' },
-			h('button', { class: 'btn primary', text: 'Load this run', disabled: !auto || S.busy || !r.ins.length, title: auto ? 'Stand at a storage with its menu open' : 'Turn on automation first', onclick: loadPinned }),
-			h('button', { class: 'btn', text: 'Empty trunks', disabled: !auto || S.busy, onclick: dumpTrunks }),
+			{ class: 'pin-actions finish' },
 			S.done.has(n.key)
-				? h('button', { class: 'btn', text: 'Mark not done', onclick: () => setDone(n.key, false) || renderPin() })
+				? h('button', { class: 'btn', text: 'Mark not done', onclick: () => (setDone(n.key, false), renderPin()) })
 				: h('button', { class: 'btn done-btn', text: 'Done, next step', onclick: completePinned })
 		)
 	);
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
+	box.append(...flowLists(n));
 }
 
 // Where a step's inputs come from and where its outputs go.
@@ -2749,6 +2839,21 @@ async function onNotification(raw) {
 	log(`Auto-trunk: opened ${best.v.name}.`);
 }
 
+function setSetting(key, value) {
+	S.settings[key] = value;
+	saveSettings();
+	const el = document.querySelector(`[data-setting="${key}"]`);
+	if (el) {
+		if (el.type === 'checkbox') el.checked = !!value;
+		else el.value = value;
+	}
+	renderPin();
+}
+
+function toggleRow(key, label) {
+	return h('label', { class: 'toggle small' }, h('input', { type: 'checkbox', checked: !!S.settings[key], onchange: (e) => setSetting(key, e.target.checked) }), h('span', { text: label }));
+}
+
 // ---------- Sidebar ----------
 function renderTargets() {
 	const box = $('#targets');
@@ -2802,6 +2907,7 @@ function bindSettings() {
 			S.settings[key] = el.type === 'checkbox' ? el.checked : el.value.trim();
 			saveSettings();
 			if (!['apiKey', 'userId', 'altApi', 'takeItem'].includes(key)) replan();
+			else renderPin();
 		});
 	});
 }
