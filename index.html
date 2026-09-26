@@ -1619,7 +1619,7 @@ function loadPlan(r, vehicles, optimal) {
 	}
 
 	// Max load: fill every vehicle with ingredients, splitting an ingredient
-	// across vehicles when needed. Ignores product weight.
+	// across vehicles when needed.
 	function pack(crafts) {
 		const room = [...caps];
 		const out = caps.map((_, i) => ({ vehicle: i, crafts: null, items: [] }));
@@ -1640,10 +1640,12 @@ function loadPlan(r, vehicles, optimal) {
 		}
 		return out;
 	}
+	// The trip can never carry more crafts than fit by the heavier of the
+	// ingredients or the products (pickups have only products).
 	let maxPer = Infinity;
-	if (inW > 0) {
+	if (unit > 0) {
 		let lo = 0;
-		let hi = Math.floor(total / inW);
+		let hi = Math.floor(total / unit);
 		while (lo < hi) {
 			const mid = Math.ceil((lo + hi) / 2);
 			if (pack(mid)) lo = mid;
