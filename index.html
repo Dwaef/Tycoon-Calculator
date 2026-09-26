@@ -367,7 +367,7 @@ input[type='checkbox'] {
 .col {
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: 12px;
 }
 
 .empty {
@@ -396,7 +396,7 @@ input[type='checkbox'] {
 
 .card {
 	position: relative;
-	width: 230px;
+	width: 240px;
 	padding: 9px 11px 10px 15px;
 	border: 1px solid var(--line);
 	border-radius: 6px;
@@ -450,8 +450,8 @@ input[type='checkbox'] {
 }
 
 .card ul {
-	margin: 6px 0 0;
-	padding: 6px 0 0;
+	margin: 5px 0 0;
+	padding: 5px 0 0;
 	list-style: none;
 	border-top: 1px dashed var(--line);
 	font-size: 12.5px;
@@ -583,6 +583,7 @@ body.overlay #pin .pin-close {
 .load li {
 	display: flex;
 	justify-content: space-between;
+	gap: 10px;
 	font-size: 13px;
 }
 
@@ -1532,7 +1533,7 @@ function solve(targets, storages, opts) {
 			const take = Math.min(have, rem);
 			st.items.set(id, have - take);
 			rem -= take;
-			const key = 'storage:' + st.id;
+			const key = 'storage:' + st.id + '@' + consumer;
 			const nd = node(key, { kind: 'storage', storageId: st.id, label: st.name });
 			nd.takes.set(id, (nd.takes.get(id) || 0) + take);
 			link(key, consumer, id, take);
@@ -1614,7 +1615,12 @@ function loadPlan(r, vehicles, optimal) {
 		return optAlloc.map((a, i) => {
 			const c = Math.min(a, left);
 			left -= c;
-			return { vehicle: i, crafts: c, items: r.ins.map((x) => ({ id: x.id, n: x.n * c })).filter((x) => x.n > 0) };
+			return {
+				vehicle: i,
+				crafts: c,
+				items: r.ins.map((x) => ({ id: x.id, n: x.n * c })).filter((x) => x.n > 0),
+				products: r.outs.map((x) => ({ id: x.id, n: x.n * c })).filter((x) => x.n > 0),
+			};
 		});
 	}
 
@@ -1655,7 +1661,7 @@ function loadPlan(r, vehicles, optimal) {
 	}
 
 	// Use optimal when asked, or when it costs nothing extra.
-	const useOptimal = optimal || optPer >= maxPer;
+	const useOptimal = optimal || optPer >= maxPer || r.ins.length === 0;
 	return {
 		inW,
 		outW,
@@ -2071,6 +2077,20 @@ function layoutColumns(result) {
 	return cols.filter(Boolean).reverse();
 }
 
+// Vehicles in display order: trailer / cab / inventory.
+function displayOrder() {
+	const rank = (v) => (v.id === 'inventory' ? 2 : v.cab ? 1 : 0);
+	return S.vehicles.map((v, i) => ({ v, i })).sort((a, b) => rank(a.v) - rank(b.v));
+}
+
+function splitText(loads, id, field) {
+	const parts = displayOrder().map(({ i }) => {
+		const load = loads.find((l) => l.vehicle === i);
+		return (load?.[field] || []).find((x) => x.id === id)?.n || 0;
+	});
+	return parts.map((n) => fmt(n) + 'x').join('/');
+}
+
 function cardFor(n) {
 	const classes = ['card', n.kind];
 	if (n.key === S.pinned) classes.push('pinned');
@@ -2086,15 +2106,16 @@ function cardFor(n) {
 			h('div', { class: 'what', text: r.name }),
 			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'too heavy' })
 		);
-		list.append(h('li', {}, h('span', { text: r.mult > 1 ? `Crafts (x${r.mult})` : 'Crafts' }), h('span', { text: fmt(n.crafts) })));
 		const total = r.cost * n.crafts;
-		if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Costs' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
+		if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Cost' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
 		if (r.bonus) list.append(h('li', {}, h('span', { text: 'Plus' }), h('span', { class: 'money-in', text: `${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}` })));
-		for (const ing of r.ins) list.append(h('li', {}, h('span', { text: itemName(ing.id) }), h('span', { text: fmt(ing.n * n.crafts) })));
+		// Per-run split: ingredients to load, or for pickups what you collect.
+		const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
+		for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
 	} else {
-		const where = n.kind === 'storage' ? 'Take from storage' : n.kind === 'missing' ? 'Not enough, and nothing makes it' : 'Keep in storage';
+		const where = n.kind === 'storage' ? 'Storage' : n.kind === 'missing' ? 'Nothing makes this' : 'Keep in storage';
 		card.append(h('div', { class: 'where', text: where }), h('div', { class: 'what', text: n.label }));
-		for (const [id, amount] of n.takes) list.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) })));
+		for (const [id, amount] of n.takes) list.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) + 'x' })));
 	}
 	card.append(list);
 	return card;
@@ -2232,7 +2253,7 @@ function renderPin() {
 		box.append(h('div', { class: 'where', text: n.kind === 'storage' ? 'Take from storage' : n.kind === 'missing' ? 'Needs sourcing' : 'Keep' }), h('h2', { text: n.label }));
 		const ul = h('ul');
 		for (const [id, amount] of n.takes) ul.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) })));
-		box.append(h('div', { class: 'load' }, ul));
+		box.append(h('div', { class: 'load' }, ul), ...flowLists(n));
 		return;
 	}
 
@@ -2253,19 +2274,21 @@ function renderPin() {
 	if (!Number.isFinite(info.runs)) box.append(h('p', { class: 'hint', text: 'One craft is heavier than all your vehicles combined. Pick a bigger trailer.' }));
 
 	for (const load of info.loads) {
-		if (!load.items.length) continue;
+		if (!load.items.length && !(load.products || []).length) continue;
 		const v = S.vehicles[load.vehicle];
 		box.append(
 			h(
 				'div',
 				{ class: 'load' },
 				h('h3', { text: v.name }),
-				h('ul', {}, load.items.map((x) => h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: fmt(x.n) }))))
+				h('ul', {}, (load.items.length ? load.items : load.products || []).map((x) => h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: fmt(x.n) }))))
 			)
 		);
 	}
 	if (r.bonus) box.append(h('p', { class: 'path', text: `Also earns ${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}.` }));
 	if (r.path.length) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
+
+	box.append(...flowLists(n));
 
 	const auto = S.settings.automation;
 	box.append(
@@ -2277,6 +2300,28 @@ function renderPin() {
 		)
 	);
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
+}
+
+// Where a step's inputs come from and where its outputs go.
+function flowLists(n) {
+	const label = (key) => {
+		const other = S.result.nodes.find((x) => x.key === key);
+		if (!other) return key;
+		return other.kind === 'recipe' ? `${other.recipe.name} (${locShort(other.recipe.loc)})` : other.label;
+	};
+	const list = (title, edges, keyOf) => {
+		if (!edges.length) return null;
+		return h(
+			'div',
+			{ class: 'load' },
+			h('h3', { text: title }),
+			h('ul', {}, edges.map((e) => h('li', {}, h('span', { text: `${itemName(e.id)} ${e.to === n.key ? 'from' : 'to'} ${label(keyOf(e))}` }), h('span', { text: fmt(e.n) }))))
+		);
+	};
+	return [
+		list('Comes from', S.result.edges.filter((e) => e.to === n.key), (e) => e.from),
+		list('Used for', S.result.edges.filter((e) => e.from === n.key), (e) => e.to),
+	].filter(Boolean);
 }
 
 // ---------- Menu automation ----------
