@@ -780,6 +780,7 @@ body.overlay #pin .pin-close {
 								<option value="strength">Strength (+100% inventory)</option>
 							</select>
 						</div>
+						<p class="hint" id="capacity"></p>
 					</div>
 				</details>
 
@@ -1905,7 +1906,7 @@ function onGameData(data) {
 
 	if ('user_id' in data && !S.settings.userId) $('#userId').placeholder = String(S.game.user_id);
 	if ('focused' in data || 'pinned' in data) applyFocus();
-	if ('max_weight' in data) scheduleReplan();
+	if ('max_weight' in data) renderCapacity();
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
@@ -1988,10 +1989,7 @@ function activeVehicles() {
 	const list = [];
 	if (s.cab) list.push({ ...VEHICLES.mk15, cap: Math.round(VEHICLES.mk15.cap * trunkMult) });
 	if (s.trailer && VEHICLES[s.trailer]) list.push({ ...VEHICLES[s.trailer], cap: Math.round(VEHICLES[s.trailer].cap * trunkMult) });
-	if (s.useInventory) {
-		const gameMax = Number(S.game.max_weight);
-		list.push({ id: 'inventory', name: 'Inventory', cap: gameMax > 0 ? gameMax : Math.round(300 * invMult) });
-	}
+	if (s.useInventory) list.push({ id: 'inventory', name: 'Inventory', cap: Math.round(300 * invMult) });
 	return list.sort((a, b) => b.cap - a.cap);
 }
 
@@ -2020,9 +2018,20 @@ function replan() {
 	$('#statCost').textContent = money(totals.cost);
 	$('#statRevenue').textContent = money(totals.revenue);
 
+	renderCapacity();
 	S.graphDirty = true;
 	if (!document.body.classList.contains('overlay')) renderGraph();
 	renderPin();
+}
+
+function renderCapacity() {
+	const box = $('#capacity');
+	if (!box) return;
+	const parts = S.vehicles.map((v) => `${v.name} ${fmt(v.cap)} kg`);
+	let text = parts.length ? 'Carrying: ' + parts.join(', ') + '.' : 'No vehicles selected.';
+	const gameMax = Number(S.game.max_weight);
+	if (S.settings.useInventory && gameMax > 0) text += ` The game reports your inventory as ${fmt(gameMax)} kg right now.`;
+	box.textContent = text;
 }
 
 // ---------- Route graph ----------
