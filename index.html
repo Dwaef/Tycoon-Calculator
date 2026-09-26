@@ -359,7 +359,7 @@ input[type='checkbox'] {
 
 #columns {
 	display: flex;
-	gap: 110px;
+	gap: 90px;
 	align-items: flex-start;
 	padding: 20px;
 }
@@ -396,12 +396,13 @@ input[type='checkbox'] {
 
 .card {
 	position: relative;
-	width: 240px;
-	padding: 9px 11px 10px 15px;
+	width: 250px;
+	padding: 9px 11px 9px 14px;
 	border: 1px solid var(--line);
-	border-radius: 6px;
+	border-radius: 7px;
 	background: var(--asphalt-2);
 	cursor: pointer;
+	transition: opacity 0.15s, border-color 0.15s;
 }
 
 .card::before {
@@ -410,8 +411,8 @@ input[type='checkbox'] {
 	left: 0;
 	top: 0;
 	bottom: 0;
-	width: 5px;
-	border-radius: 6px 0 0 6px;
+	width: 4px;
+	border-radius: 7px 0 0 7px;
 	background: var(--stripe, var(--muted));
 }
 
@@ -419,41 +420,58 @@ input[type='checkbox'] {
 	border-color: var(--muted);
 }
 
-.card.pinned {
-	border-color: var(--amber);
-	box-shadow: 0 0 0 2px var(--amber);
+.card .head {
+	display: flex;
+	align-items: flex-start;
+	gap: 9px;
+}
+
+.card .titles {
+	flex: 1;
+	min-width: 0;
 }
 
 .card .where {
 	color: var(--muted);
-	font-size: 12px;
-	padding-right: 58px;
+	font-size: 11.5px;
+	line-height: 1.2;
 }
 
 .card .what {
 	font-weight: 700;
 	font-size: 15px;
-	padding-right: 58px;
+	line-height: 1.2;
+}
+
+/* Step number: the thing to scan for when choosing what to do next. */
+.step {
+	flex: none;
+	display: grid;
+	place-items: center;
+	min-width: 26px;
+	height: 26px;
+	padding: 0 5px;
+	border: 1.5px solid var(--muted);
+	border-radius: 13px;
+	font-weight: 700;
+	font-size: 13px;
+	color: var(--paint);
 }
 
 .plate {
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	padding: 2px 7px;
+	flex: none;
+	padding: 1px 6px;
 	border-radius: 3px;
-	background: var(--amber);
-	color: var(--amber-ink);
+	background: var(--asphalt-3);
+	border: 1px solid var(--line);
 	font-weight: 700;
 	font-size: 12px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
 }
 
 .card ul {
-	margin: 5px 0 0;
-	padding: 5px 0 0;
+	margin: 7px 0 0;
+	padding: 0 0 0 35px;
 	list-style: none;
-	border-top: 1px dashed var(--line);
 	font-size: 12.5px;
 }
 
@@ -467,16 +485,83 @@ input[type='checkbox'] {
 	color: var(--muted);
 }
 
-.card.missing {
-	--stripe: var(--stop);
+/* Pickups are where a chain starts: lighter, outlined. */
+.card.pickup {
+	background: transparent;
+	border-style: dashed;
 }
 
-.card.storage {
+/* The final step (the sale or the kept item) carries the weight. */
+.card.final {
+	border: 2px solid var(--amber);
+	background: #2b2a22;
+}
+
+.card.final .what {
+	font-size: 17px;
+}
+
+.card.next {
+	border-color: var(--amber);
+	box-shadow: 0 0 0 3px rgba(242, 169, 0, 0.35);
+}
+
+.card.next .step {
+	background: var(--amber);
+	border-color: var(--amber);
+	color: var(--amber-ink);
+}
+
+.card.next .step::after {
+	content: ' next';
+	margin-left: 3px;
+	font-size: 11px;
+}
+
+.card.done {
+	opacity: 0.4;
+}
+
+.card.done .step {
+	border-color: var(--go);
+	color: var(--go);
+}
+
+.card.pinned {
+	border-color: var(--paint);
+	box-shadow: 0 0 0 2px var(--paint);
+}
+
+/* Storage and "get it yourself" chips: not steps, just sources. */
+.card.chip {
+	width: 250px;
+	padding: 5px 10px 6px 12px;
+	border-radius: 5px;
+	background: rgba(73, 168, 111, 0.1);
+	border-color: rgba(73, 168, 111, 0.4);
 	--stripe: var(--go);
 }
 
-.card.target {
+.card.chip.missing {
+	background: rgba(224, 88, 79, 0.1);
+	border-color: rgba(224, 88, 79, 0.45);
+	--stripe: var(--stop);
+}
+
+.card.chip.final {
+	border: 2px solid var(--amber);
+	background: #2b2a22;
 	--stripe: var(--amber);
+}
+
+.chip-title {
+	font-size: 11.5px;
+	color: var(--muted);
+}
+
+.chip-items {
+	font-size: 13px;
+	font-weight: 600;
 }
 
 .money-in {
@@ -485,6 +570,24 @@ input[type='checkbox'] {
 
 .money-out {
 	color: var(--stop);
+}
+
+/* Lines: quiet by default, labelled only for the focused card. */
+#edges.focused path {
+	opacity: 0.12;
+}
+
+#edges.focused path.on {
+	opacity: 1;
+	stroke-width: 3;
+}
+
+#edges text {
+	display: none;
+}
+
+#edges text.on {
+	display: block;
 }
 
 /* ---------- Pinned panel ---------- */
@@ -738,6 +841,12 @@ body.overlay #pin .pin-close {
 	flex: 1;
 }
 
+.done-btn {
+	border-color: var(--go);
+	color: var(--go);
+	font-weight: 700;
+}
+
 		</style>
 	</head>
 	<body>
@@ -749,6 +858,7 @@ body.overlay #pin .pin-close {
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn primary" id="refresh" title="Reads all your storages from the TT API (4 requests)">Refresh storages</button>
 				<div class="stats">
+					<div><small>Steps done</small><b id="statSteps">0</b></div>
 					<div><small>Runs</small><b id="statRuns">0</b></div>
 					<div><small>Spend</small><b class="spend" id="statCost">$0</b></div>
 					<div><small>Earn</small><b class="earn" id="statRevenue">$0</b></div>
@@ -792,6 +902,7 @@ body.overlay #pin .pin-close {
 						<label class="toggle"><input type="checkbox" data-setting="optimal" /><span>Leave room for products in each trunk</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="useHM" /><span>Use the biggest batch option (x10, x20…)</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="autoPlan" /><span>Re-plan when a chest updates</span></label>
+						<button class="btn" id="resetProgress">Clear step progress</button>
 					</div>
 				</details>
 
@@ -808,7 +919,7 @@ body.overlay #pin .pin-close {
 							<button class="btn" id="takeBtn">Take max into trunks</button>
 							<button class="btn" id="dumpBtn">Empty trunks</button>
 						</div>
-						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”.</p>
+						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”, including one to mark the pinned step done and pin the next.</p>
 					</div>
 				</details>
 
@@ -836,7 +947,7 @@ body.overlay #pin .pin-close {
 					<svg id="edges"></svg>
 					<div id="columns"></div>
 				</div>
-				<div class="empty" id="empty"><div><b>Nothing planned yet</b>Add an item under “What to make” and the route appears here.</div></div>
+				<div class="empty" id="empty"><div><b>Nothing planned yet</b>Add an item under “What to make” and the route appears here. Double-click to fit the route to the window.</div></div>
 			</main>
 		</div>
 
@@ -1741,7 +1852,7 @@ function choiceMatches(choiceText, match) {
 const API_BASE = 'https://tycoon-2epova.users.cfx.re/status/';
 const API_MIRROR = 'https://d.ttstats.eu/public-main/status/';
 const NOTIFY_PREFIX = '~y~[Haul Planner]~w~ ';
-const TRIGGERS = { load: 'haulplanner_load', dump: 'haulplanner_dump', take: 'haulplanner_take' };
+const TRIGGERS = { load: 'haulplanner_load', dump: 'haulplanner_dump', take: 'haulplanner_take', next: 'haulplanner_next' };
 
 // ---------- Storage (namespaced localStorage) ----------
 const NS = 'haulplanner:';
@@ -1791,6 +1902,10 @@ const S = {
 	sdOwned: store.get('sdOwned', {}),
 	storages: new Map(),
 	pinned: store.get('pinned', null),
+	done: new Set(store.get('done', [])),
+	order: [],
+	hovered: null,
+	fitPending: true,
 	game: {},
 	inGame: false,
 	result: null,
@@ -1880,6 +1995,7 @@ function onGameData(data) {
 			if (action === 'load') loadPinned();
 			if (action === 'dump') dumpTrunks();
 			if (action === 'take') takeMax();
+			if (action === 'next') completePinned();
 		}
 	}
 
@@ -2094,29 +2210,41 @@ function splitText(loads, id, field) {
 function cardFor(n) {
 	const classes = ['card', n.kind];
 	if (n.key === S.pinned) classes.push('pinned');
-	const card = h('div', { class: classes.join(' '), 'data-key': n.key });
-	const list = h('ul');
 
-	if (n.kind === 'recipe') {
-		const r = n.recipe;
-		card.style.setProperty('--stripe', r.color);
-		const info = nodeRuns(n, S.vehicles, S.settings.optimal);
-		card.append(
-			h('div', { class: 'where', text: locShort(r.loc) }, r.sd ? h('span', { class: 'sd-tag', title: 'SD card: ' + r.sd, text: 'SD' }) : null),
-			h('div', { class: 'what', text: r.name }),
-			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'too heavy' })
-		);
-		const total = r.cost * n.crafts;
-		if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Cost' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
-		if (r.bonus) list.append(h('li', {}, h('span', { text: 'Plus' }), h('span', { class: 'money-in', text: `${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}` })));
-		// Per-run split: ingredients to load, or for pickups what you collect.
-		const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
-		for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
-	} else {
-		const where = n.kind === 'storage' ? 'Storage' : n.kind === 'missing' ? 'Nothing makes this' : 'Keep in storage';
-		card.append(h('div', { class: 'where', text: where }), h('div', { class: 'what', text: n.label }));
-		for (const [id, amount] of n.takes) list.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) + 'x' })));
+	// Storage and "get it yourself" boxes are slim chips, not steps.
+	if (n.kind !== 'recipe') {
+		if (n.kind === 'target') classes.push('final');
+		const chip = h('div', { class: classes.concat('chip').join(' '), 'data-key': n.key });
+		const items = [...n.takes].map(([id, amount]) => `${itemName(id)} ${fmt(amount)}x`).join(', ');
+		const title = n.kind === 'storage' ? n.label : n.kind === 'missing' ? 'Get it yourself' : 'Keep in storage';
+		chip.append(h('div', { class: 'chip-title', text: title }), h('div', { class: 'chip-items', text: items }));
+		return chip;
 	}
+
+	const r = n.recipe;
+	const num = stepNumber(n.key);
+	const done = S.done.has(n.key);
+	if (done) classes.push('done');
+	if (n.target) classes.push('final');
+	if (!r.ins.length) classes.push('pickup');
+	const card = h('div', { class: classes.join(' '), 'data-key': n.key });
+	card.style.setProperty('--stripe', r.color);
+	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
+	card.append(
+		h(
+			'div',
+			{ class: 'head' },
+			h('span', { class: 'step', text: done ? '✓' : String(num) }),
+			h('div', { class: 'titles' }, h('div', { class: 'where', text: locShort(r.loc) }, r.sd ? h('span', { class: 'sd-tag', title: 'SD card: ' + r.sd, text: 'SD' }) : null), h('div', { class: 'what', text: r.name })),
+			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs}×` : '!' , title: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'Too heavy for your vehicles' })
+		)
+	);
+	const list = h('ul');
+	const total = r.cost * n.crafts;
+	if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Cost' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
+	if (r.bonus) list.append(h('li', {}, h('span', { text: 'Plus' }), h('span', { class: 'money-in', text: `${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}` })));
+	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
+	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
 	card.append(list);
 	return card;
 }
@@ -2129,17 +2257,46 @@ function renderGraph() {
 	svg.textContent = '';
 	const result = S.result;
 	$('#empty').hidden = !!(result && result.nodes.length);
-	if (!result || !result.nodes.length) return;
+	S.order = [];
+	if (!result || !result.nodes.length) return renderProgress();
 
-	for (const col of layoutColumns(result)) columns.append(h('div', { class: 'col' }, col.map(cardFor)));
-	applyView();
-	requestAnimationFrame(drawEdges);
+	const cols = layoutColumns(result);
+	// Step numbers follow the columns left to right, top to bottom, which is
+	// always an order where every step's inputs come earlier.
+	for (const col of cols) for (const n of col) if (n.kind === 'recipe') S.order.push(n.key);
+	for (const col of cols) columns.append(h('div', { class: 'col' }, col.map(cardFor)));
+	renderProgress();
+	requestAnimationFrame(() => {
+		if (S.fitPending) {
+			S.fitPending = false;
+			fitView(false);
+		} else applyView();
+		drawEdges();
+	});
+}
+
+function stepNumber(key) {
+	return S.order.indexOf(key) + 1;
+}
+
+function nextKey() {
+	return S.order.find((k) => !S.done.has(k)) || null;
+}
+
+function renderProgress() {
+	const total = S.order.length;
+	const done = S.order.filter((k) => S.done.has(k)).length;
+	$('#statSteps').textContent = total ? `${done}/${total}` : '0';
+	const next = nextKey();
+	document.querySelectorAll('.card.next').forEach((c) => c.classList.remove('next'));
+	if (next) document.querySelector(`.card[data-key="${CSS.escape(next)}"]`)?.classList.add('next');
 }
 
 function drawEdges() {
 	const svg = $('#edges');
 	const canvas = $('#canvas');
 	svg.textContent = '';
+	if (!S.result) return;
 	const base = canvas.getBoundingClientRect();
 	const k = S.view.k;
 	svg.setAttribute('width', canvas.scrollWidth);
@@ -2151,6 +2308,9 @@ function drawEdges() {
 		return { x: (r.left - base.left) / k, y: (r.top - base.top) / k, w: r.width / k, h: r.height / k };
 	};
 	const ns = 'http://www.w3.org/2000/svg';
+	const lines = document.createElementNS(ns, 'g');
+	const labels = document.createElementNS(ns, 'g');
+	svg.append(lines, labels);
 	for (const e of S.result.edges) {
 		const a = rect(e.from);
 		const b = rect(e.to);
@@ -2158,44 +2318,89 @@ function drawEdges() {
 		const from = S.result.nodes.find((n) => n.key === e.from);
 		const color = from?.recipe?.color || (from?.kind === 'storage' ? '#49a86f' : from?.kind === 'missing' ? '#e0584f' : '#98a2a8');
 		const x1 = a.x + a.w;
-		const y1 = a.y + Math.min(a.h / 2, 40);
+		const y1 = a.y + Math.min(a.h / 2, 34);
 		const x2 = b.x;
-		const y2 = b.y + Math.min(b.h / 2, 40);
+		const y2 = b.y + Math.min(b.h / 2, 34);
 		const dx = Math.max(40, (x2 - x1) / 2);
 		const path = document.createElementNS(ns, 'path');
 		path.setAttribute('d', `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`);
 		path.setAttribute('stroke', color);
-		svg.append(path);
+		path.dataset.from = e.from;
+		path.dataset.to = e.to;
+		lines.append(path);
+		// Label at the middle of the curve; only shown for the focused card.
+		const mid = path.getTotalLength ? path.getPointAtLength(path.getTotalLength() / 2) : { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
 		const label = document.createElementNS(ns, 'text');
-		label.setAttribute('x', x2 - 8);
-		label.setAttribute('y', y2 - 5);
-		label.setAttribute('text-anchor', 'end');
+		label.setAttribute('x', mid.x);
+		label.setAttribute('y', mid.y - 5);
+		label.setAttribute('text-anchor', 'middle');
+		label.dataset.from = e.from;
+		label.dataset.to = e.to;
 		label.textContent = `${itemName(e.id)} ${fmt(e.n)}`;
-		svg.append(label);
+		labels.append(label);
 	}
+	highlightEdges();
+}
+
+// Emphasise the lines touching the hovered (or pinned) card and label them.
+function highlightEdges() {
+	const svg = $('#edges');
+	const key = S.hovered || S.pinned;
+	svg.classList.toggle('focused', !!key);
+	svg.querySelectorAll('[data-from]').forEach((el) => el.classList.toggle('on', !!key && (el.dataset.from === key || el.dataset.to === key)));
 }
 
 function applyView() {
 	$('#canvas').style.transform = `translate(${S.view.x}px, ${S.view.y}px) scale(${S.view.k})`;
 }
 
+// Zoom so the whole route fits the window (never zooming in past 100%).
+function fitView(animate = true) {
+	const vp = $('#viewport').getBoundingClientRect();
+	const cols = $('#columns');
+	const w = cols.scrollWidth;
+	const hgt = cols.scrollHeight;
+	if (!w || !hgt || !vp.width) return;
+	const k = Math.max(0.35, Math.min(1, (vp.width - 40) / w, (vp.height - 40) / hgt));
+	S.view = { k, x: Math.max(20, (vp.width - w * k) / 2), y: 20 };
+	const canvas = $('#canvas');
+	canvas.style.transition = animate ? 'transform 0.25s ease' : '';
+	applyView();
+	if (animate) setTimeout(() => (canvas.style.transition = ''), 260);
+}
+
 function setupPanZoom() {
 	const vp = $('#viewport');
 	let drag = null;
-	vp.addEventListener('wheel', (e) => {
-		e.preventDefault();
-		const r = vp.getBoundingClientRect();
-		const mx = e.clientX - r.left;
-		const my = e.clientY - r.top;
-		const k2 = Math.min(2.5, Math.max(0.2, S.view.k * (e.deltaY > 0 ? 0.9 : 1.1)));
-		S.view.x = mx - ((mx - S.view.x) * k2) / S.view.k;
-		S.view.y = my - ((my - S.view.y) * k2) / S.view.k;
-		S.view.k = k2;
-		applyView();
-	}, { passive: false });
+	vp.addEventListener(
+		'wheel',
+		(e) => {
+			e.preventDefault();
+			const r = vp.getBoundingClientRect();
+			const mx = e.clientX - r.left;
+			const my = e.clientY - r.top;
+			const k2 = Math.min(2.5, Math.max(0.2, S.view.k * (e.deltaY > 0 ? 0.9 : 1.1)));
+			S.view.x = mx - ((mx - S.view.x) * k2) / S.view.k;
+			S.view.y = my - ((my - S.view.y) * k2) / S.view.k;
+			S.view.k = k2;
+			applyView();
+		},
+		{ passive: false }
+	);
 	vp.addEventListener('mousedown', (e) => {
 		if (e.button !== 0) return;
 		drag = { x: e.clientX, y: e.clientY, vx: S.view.x, vy: S.view.y, moved: false };
+	});
+	vp.addEventListener('mouseover', (e) => {
+		const key = e.target.closest?.('.card')?.dataset.key || null;
+		if (key !== S.hovered) {
+			S.hovered = key;
+			highlightEdges();
+		}
+	});
+	vp.addEventListener('mouseleave', () => {
+		S.hovered = null;
+		highlightEdges();
 	});
 	window.addEventListener('mousemove', (e) => {
 		if (!drag) return;
@@ -2220,10 +2425,42 @@ function setupPanZoom() {
 		const card = e.target.closest?.('.card');
 		if (card) setPinned(card.dataset.key === S.pinned ? null : card.dataset.key);
 	});
-	vp.addEventListener('dblclick', () => {
-		S.view = { x: 30, y: 30, k: 1 };
-		applyView();
-	});
+	vp.addEventListener('dblclick', () => fitView(true));
+}
+
+// ---------- Progress ----------
+function setDone(key, done) {
+	if (done) S.done.add(key);
+	else S.done.delete(key);
+	store.set('done', [...S.done]);
+	const card = document.querySelector(`.card[data-key="${CSS.escape(key)}"]`);
+	if (card) {
+		card.classList.toggle('done', done);
+		const num = card.querySelector('.step');
+		if (num) num.textContent = done ? '✓' : String(stepNumber(key));
+	}
+	renderProgress();
+}
+
+// Mark the pinned step done and move the pin to the next step.
+function completePinned() {
+	const n = pinnedNode();
+	if (!n || n.kind !== 'recipe') {
+		const next = nextKey();
+		if (next) setPinned(next);
+		return;
+	}
+	setDone(n.key, true);
+	const next = nextKey();
+	setPinned(next);
+	notify(next ? 'Next: ' + pinnedNode().recipe.name : 'All steps done.');
+}
+
+function resetProgress(rerender = true) {
+	S.done.clear();
+	store.set('done', []);
+	S.fitPending = true;
+	if (rerender) replan();
 }
 
 // ---------- Pinned panel ----------
@@ -2233,6 +2470,7 @@ function setPinned(key) {
 	S.recipeFiredForMenu = true; // don't fire auto-recipe into an already-open menu
 	document.querySelectorAll('.card.pinned').forEach((c) => c.classList.remove('pinned'));
 	if (key) document.querySelector(`.card[data-key="${CSS.escape(key)}"]`)?.classList.add('pinned');
+	highlightEdges();
 	renderPin();
 }
 
@@ -2261,7 +2499,7 @@ function renderPin() {
 	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
 	box.style.setProperty('--stripe', r.color);
 	box.append(
-		h('div', { class: 'where', text: locShort(r.loc) }),
+		h('div', { class: 'where', text: `Step ${stepNumber(n.key)} of ${S.order.length}, ${locShort(r.loc)}` }),
 		h('h2', { text: r.name }),
 		h(
 			'div',
@@ -2296,7 +2534,10 @@ function renderPin() {
 			'div',
 			{ class: 'pin-actions' },
 			h('button', { class: 'btn primary', text: 'Load this run', disabled: !auto || S.busy || !r.ins.length, title: auto ? 'Stand at a storage with its menu open' : 'Turn on automation first', onclick: loadPinned }),
-			h('button', { class: 'btn', text: 'Empty trunks', disabled: !auto || S.busy, onclick: dumpTrunks })
+			h('button', { class: 'btn', text: 'Empty trunks', disabled: !auto || S.busy, onclick: dumpTrunks }),
+			S.done.has(n.key)
+				? h('button', { class: 'btn', text: 'Mark not done', onclick: () => setDone(n.key, false) || renderPin() })
+				: h('button', { class: 'btn done-btn', text: 'Done, next step', onclick: completePinned })
 		)
 	);
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
@@ -2529,12 +2770,14 @@ function renderTargets() {
 }
 
 function updateTarget(i, patch) {
+	resetProgress(false);
 	S.targets[i] = { ...S.targets[i], ...patch };
 	store.set('targets', S.targets);
 	replan();
 }
 
 function removeTarget(i) {
+	resetProgress(false);
 	S.targets.splice(i, 1);
 	store.set('targets', S.targets);
 	renderTargets();
@@ -2689,15 +2932,20 @@ function init() {
 
 	$('#toggleSidebar').onclick = () => {
 		document.body.classList.toggle('sidebar-hidden');
-		requestAnimationFrame(drawEdges);
+		requestAnimationFrame(() => {
+			fitView(true);
+			drawEdges();
+		});
 	};
 	$('#addTarget').onclick = () => {
+		resetProgress(false);
 		S.targets.push({ id: 'crafted_jewelry', n: 100 });
 		store.set('targets', S.targets);
 		renderTargets();
 		replan();
 	};
 	$('#refresh').onclick = refreshFromApi;
+	$('#resetProgress').onclick = () => resetProgress(true);
 	$('#dumpBtn').onclick = dumpTrunks;
 	$('#takeBtn').onclick = takeMax;
 	$('#openStorages').onclick = () => {
@@ -2740,6 +2988,7 @@ function init() {
 		send('registerTrigger', { trigger: TRIGGERS.load, name: 'Haul Planner: load this run' });
 		send('registerTrigger', { trigger: TRIGGERS.dump, name: 'Haul Planner: empty trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
+		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: step done, pin next' });
 	}, 250);
 	setTimeout(() => (S.triggersArmed = true), 2000);
 }
