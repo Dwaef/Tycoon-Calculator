@@ -1390,7 +1390,10 @@ function resolveStorageId(rawKey, userId, factionId) {
 	let k = String(rawKey).replace(/^chest_/, '');
 	if (k === 'inventory') return 'inventory';
 	const self = k.match(/^self_storage:(\d+):(.+):chest$/);
-	if (self) return userId && self[1] !== String(userId) ? null : self[2];
+	if (self) {
+		if (userId && self[1] !== String(userId)) return null;
+		k = self[2];
+	}
 	const u = k.match(/^u(\d+)(.*)$/);
 	if (u) {
 		if (userId && u[1] !== String(userId)) return null;
