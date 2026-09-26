@@ -2735,7 +2735,8 @@ function carryingNow(relevant) {
 	const wrap = h('div', { class: 'load carrying' }, h('h3', { text: 'Carrying now' }));
 	for (const { v } of displayOrder()) {
 		const st = S.storages.get(v.id);
-		const items = st ? [...st.items].filter(([, k]) => k > 0).sort((a, b) => (relevant.has(b[0]) - relevant.has(a[0])) || b[1] - a[1]) : [];
+		// Hide weightless items (cards, tokens, unknown extras) unless this step needs them.
+		const items = st ? [...st.items].filter(([id, k]) => k > 0 && (itemWeight(id) > 0 || relevant.has(id))).sort((a, b) => (relevant.has(b[0]) - relevant.has(a[0])) || b[1] - a[1]) : [];
 		let used = items.reduce((sum, [id, k]) => sum + itemWeight(id) * k, 0);
 		let cap = v.cap;
 		if (v.id === 'inventory' && Number(S.game.max_weight) > 0) {
@@ -2750,7 +2751,7 @@ function carryingNow(relevant) {
 			h('div', { class: 'vehicle-head' }, h('span', { text: v.name }), h('span', { text: st ? `${fmt(used)} / ${fmt(cap)} kg` : 'not opened yet' })),
 			h('div', { class: 'meter' + (pct >= 95 ? ' full' : '') }, h('span', { style: `width:${pct}%` }))
 		);
-		if (st && !items.length) block.append(h('div', { class: 'hint', text: 'Empty' }));
+		if (st && !items.length) block.append(h('div', { class: 'hint', text: [...st.items.values()].some((k) => k > 0) ? 'Nothing with weight' : 'Empty' }));
 		const shown = items.slice(0, 6);
 		if (shown.length)
 			block.append(
