@@ -906,6 +906,55 @@ body.overlay #pin .todo {
 	background: var(--go);
 }
 
+.carrying .vehicle {
+	padding: 4px 0 6px;
+	border-bottom: 1px dashed var(--line);
+}
+
+.carrying .vehicle:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.vehicle-head {
+	display: flex;
+	justify-content: space-between;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.vehicle-head span:last-child {
+	font-weight: 400;
+	color: var(--muted);
+}
+
+.meter {
+	height: 5px;
+	margin: 3px 0 4px;
+	border-radius: 3px;
+	background: var(--asphalt-3);
+	overflow: hidden;
+}
+
+.meter span {
+	display: block;
+	height: 100%;
+	background: var(--go);
+}
+
+.meter.full span {
+	background: var(--amber);
+}
+
+.carrying li.relevant span {
+	color: var(--amber);
+	font-weight: 700;
+}
+
+body.overlay #pin .flow {
+	display: none;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1569,7 +1618,12 @@ for (const loc of LOCATIONS) {
 
 const stripTags = (s) => String(s ?? '').replace(/(<.+?>)|(&#.+?;)/g, '').trim();
 const stripColors = (s) => String(s ?? '').replace(/~.~/g, '').trim();
-const itemName = (id) => (ITEMS[id] ? ITEMS[id].name : id);
+// Unknown items (food, cards, etc.) get a readable name from their id.
+const itemName = (id) => {
+	if (ITEMS[id]) return ITEMS[id].name;
+	const base = String(id).split('|')[0].replace(/_/g, ' ').trim();
+	return base.charAt(0).toUpperCase() + base.slice(1);
+};
 const itemWeight = (id) => (ITEMS[id] ? ITEMS[id].w : 0);
 const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '∞');
 const money = (n) => '$' + fmt(n);
@@ -2094,6 +2148,7 @@ function onGameData(data) {
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
+	else if (storagesChanged || 'weight' in data || 'max_weight' in data) renderPin();
 }
 
 function applyFocus() {
@@ -2605,6 +2660,13 @@ function renderPin() {
 	);
 	if (!Number.isFinite(info.runs)) box.append(h('p', { class: 'hint', text: 'One craft is heavier than all your vehicles combined. Pick a bigger trailer.' }));
 
+	// Everything this step still has to do, not just this run.
+	const leftRows = [];
+	leftRows.push(h('li', {}, h('span', { text: 'Crafts' }), h('span', { text: `${fmt(n.crafts)}${Number.isFinite(info.runs) ? `, ${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : ''}` })));
+	for (const x of r.outs) leftRows.push(h('li', {}, h('span', { text: 'Makes ' + itemName(x.id) }), h('span', { text: fmt(x.n * n.crafts) })));
+	for (const x of r.ins) leftRows.push(h('li', {}, h('span', { text: 'Uses ' + itemName(x.id) }), h('span', { text: fmt(x.n * n.crafts) })));
+	box.append(h('div', { class: 'load' }, h('h3', { text: 'Left in total' }), h('ul', {}, leftRows)));
+
 	for (const load of info.loads) {
 		if (!load.items.length && !(load.products || []).length) continue;
 		const v = S.vehicles[load.vehicle];
@@ -2619,6 +2681,8 @@ function renderPin() {
 	}
 	if (r.bonus) box.append(h('p', { class: 'path', text: `Also earns ${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}.` }));
 	if (r.path.length && !S.settings.automation) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
+
+	box.append(carryingNow(new Set([...r.ins, ...r.outs].map((x) => x.id))));
 
 	const auto = S.settings.automation;
 	const hasLoad = r.ins.length > 0;
@@ -2665,6 +2729,39 @@ function renderPin() {
 	box.append(...flowLists(n));
 }
 
+// What is in your inventory and trunks right now, from the latest game or
+// API data. Items the pinned step uses or makes are highlighted.
+function carryingNow(relevant) {
+	const wrap = h('div', { class: 'load carrying' }, h('h3', { text: 'Carrying now' }));
+	for (const { v } of displayOrder()) {
+		const st = S.storages.get(v.id);
+		const items = st ? [...st.items].filter(([, k]) => k > 0).sort((a, b) => (relevant.has(b[0]) - relevant.has(a[0])) || b[1] - a[1]) : [];
+		let used = items.reduce((sum, [id, k]) => sum + itemWeight(id) * k, 0);
+		let cap = v.cap;
+		if (v.id === 'inventory' && Number(S.game.max_weight) > 0) {
+			// The game reports inventory weight directly, which is exact.
+			cap = Number(S.game.max_weight);
+			if (S.game.weight != null) used = Number(S.game.weight);
+		}
+		const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+		const block = h(
+			'div',
+			{ class: 'vehicle' },
+			h('div', { class: 'vehicle-head' }, h('span', { text: v.name }), h('span', { text: st ? `${fmt(used)} / ${fmt(cap)} kg` : 'not opened yet' })),
+			h('div', { class: 'meter' + (pct >= 95 ? ' full' : '') }, h('span', { style: `width:${pct}%` }))
+		);
+		if (st && !items.length) block.append(h('div', { class: 'hint', text: 'Empty' }));
+		const shown = items.slice(0, 6);
+		if (shown.length)
+			block.append(
+				h('ul', {}, shown.map(([id, k]) => h('li', { class: relevant.has(id) ? 'relevant' : '' }, h('span', { text: itemName(id) }), h('span', { text: fmt(k) }))))
+			);
+		if (items.length > shown.length) block.append(h('div', { class: 'hint', text: `+${items.length - shown.length} more` }));
+		wrap.append(block);
+	}
+	return wrap;
+}
+
 // Where a step's inputs come from and where its outputs go.
 function flowLists(n) {
 	const label = (key) => {
@@ -2676,7 +2773,7 @@ function flowLists(n) {
 		if (!edges.length) return null;
 		return h(
 			'div',
-			{ class: 'load' },
+			{ class: 'load flow' },
 			h('h3', { text: title }),
 			h('ul', {}, edges.map((e) => h('li', {}, h('span', { text: `${itemName(e.id)} ${e.to === n.key ? 'from' : 'to'} ${label(keyOf(e))}` }), h('span', { text: fmt(e.n) }))))
 		);
