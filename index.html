@@ -599,7 +599,7 @@ input[type='checkbox'] {
 	width: 320px;
 	max-height: 70vh;
 	overflow-y: auto;
-	padding: 12px 14px 14px 18px;
+	padding: 0 14px 14px 18px;
 	border: 1px solid var(--line);
 	border-radius: var(--radius-panel);
 	background: var(--asphalt-2);
@@ -955,6 +955,43 @@ body.overlay #pin .flow {
 	display: none;
 }
 
+.pin-grip {
+	position: sticky;
+	top: 0;
+	margin: 0 -14px 6px -18px;
+	height: 16px;
+	display: grid;
+	place-items: center;
+	cursor: move;
+	background: var(--asphalt-2);
+	z-index: 1;
+}
+
+.pin-grip span {
+	width: 36px;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--line);
+}
+
+.pin-grip:hover span,
+#pin.dragging .pin-grip span {
+	background: var(--muted);
+}
+
+#pin.dragging {
+	opacity: 0.9;
+	user-select: none;
+}
+
+.pin-close {
+	top: 14px;
+}
+
+body.overlay.off-job #pin {
+	display: none;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1010,6 +1047,7 @@ body.overlay #pin .flow {
 						<label class="toggle"><input type="checkbox" data-setting="optimal" /><span>Leave room for products in each trunk</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="useHM" /><span>Use the biggest batch option (x10, x20…)</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="autoPlan" /><span>Re-plan when a chest updates</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="truckerOnly" /><span>Over the game, only show the pinned card on the trucker job</span></label>
 						<button class="btn" id="resetProgress" title="Counts progress from the plan as it is now">Restart progress count</button>
 					</div>
 				</details>
@@ -2005,6 +2043,7 @@ const DEFAULTS = {
 	autoRecipe: false,
 	autoTrunk: false,
 	takeItem: '',
+	truckerOnly: true,
 };
 
 const S = {
@@ -2144,11 +2183,19 @@ function onGameData(data) {
 
 	if ('user_id' in data && !S.settings.userId) $('#userId').placeholder = String(S.game.user_id);
 	if ('focused' in data || 'pinned' in data) applyFocus();
+	if ('job' in data) applyJob();
 	if ('max_weight' in data) renderCapacity();
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
 	else if (storagesChanged || 'weight' in data || 'max_weight' in data) renderPin();
+}
+
+// Over gameplay, only show the pinned card while on the trucker job.
+function applyJob() {
+	const job = S.game.job;
+	const off = S.inGame && S.settings.truckerOnly && job != null && job !== '' && job !== 'trucker';
+	document.body.classList.toggle('off-job', off);
 }
 
 function applyFocus() {
@@ -2595,6 +2642,56 @@ function resetProgress(rerender = true) {
 }
 
 // ---------- Pinned panel ----------
+// The pinned card can be dragged by its grip; the spot is remembered and used
+// both with the app open and over gameplay.
+function placePin() {
+	const box = $('#pin');
+	const pos = store.get('pinPos', null);
+	if (!pos) {
+		box.style.left = box.style.top = '';
+		box.style.right = box.style.bottom = '';
+		return;
+	}
+	const maxX = Math.max(0, window.innerWidth - box.offsetWidth - 4);
+	const maxY = Math.max(0, window.innerHeight - 40);
+	box.style.left = Math.min(maxX, Math.max(4, pos.x)) + 'px';
+	box.style.top = Math.min(maxY, Math.max(4, pos.y)) + 'px';
+	box.style.right = box.style.bottom = 'auto';
+}
+
+function setupPinDrag() {
+	const box = $('#pin');
+	let drag = null;
+	box.addEventListener('mousedown', (e) => {
+		if (e.button !== 0 || !e.target.closest('.pin-grip')) return;
+		const r = box.getBoundingClientRect();
+		drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+		box.classList.add('dragging');
+		e.preventDefault();
+	});
+	window.addEventListener('mousemove', (e) => {
+		if (!drag) return;
+		store.set('pinPos', { x: e.clientX - drag.dx, y: e.clientY - drag.dy });
+		placePin();
+	});
+	window.addEventListener('mouseup', () => {
+		if (!drag) return;
+		drag = null;
+		box.classList.remove('dragging');
+	});
+	box.addEventListener('dblclick', (e) => {
+		if (!e.target.closest('.pin-grip')) return;
+		store.set('pinPos', null);
+		placePin();
+	});
+	window.addEventListener('resize', placePin);
+	placePin();
+}
+
+function pinGrip() {
+	return h('div', { class: 'pin-grip', title: 'Drag to move. Double-click to put it back in the corner.' }, h('span'));
+}
+
 function setPinned(key) {
 	S.pinned = key;
 	store.set('pinned', key);
@@ -2613,6 +2710,7 @@ function renderPin() {
 	const box = $('#pin');
 	const n = pinnedNode();
 	box.textContent = '';
+	box.append(pinGrip());
 	box.classList.toggle('guide', !n);
 	if (!n) {
 		// Nothing pinned: show how the workflow goes (hidden over gameplay).
@@ -3036,7 +3134,8 @@ function bindSettings() {
 		el.addEventListener('change', () => {
 			S.settings[key] = el.type === 'checkbox' ? el.checked : el.value.trim();
 			saveSettings();
-			if (!['apiKey', 'userId', 'altApi', 'takeItem'].includes(key)) replan();
+			if (key === 'truckerOnly') applyJob();
+			if (!['apiKey', 'userId', 'altApi', 'takeItem', 'truckerOnly'].includes(key)) replan();
 			else renderPin();
 		});
 	});
@@ -3165,6 +3264,8 @@ function init() {
 	bindSettings();
 	renderTargets();
 	setupPanZoom();
+	setupPinDrag();
+	applyJob();
 
 	$('#toggleSidebar').onclick = () => {
 		document.body.classList.toggle('sidebar-hidden');
