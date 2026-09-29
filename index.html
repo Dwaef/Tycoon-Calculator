@@ -992,6 +992,81 @@ body.overlay.off-job #pin {
 	display: none;
 }
 
+/* ---------- Make & Sell ---------- */
+.sheet.wide {
+	width: min(900px, 94vw);
+}
+
+.ms-section {
+	margin-bottom: 22px;
+}
+
+.ms-section h3 {
+	margin: 0 0 2px;
+	font-size: 16px;
+}
+
+.ms-section > .hint {
+	margin-bottom: 8px;
+}
+
+.ms-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.ms-row {
+	display: grid;
+	grid-template-columns: 1fr auto auto;
+	gap: 14px;
+	align-items: center;
+	padding: 8px 10px;
+	border-radius: var(--radius-control);
+}
+
+.ms-row:nth-child(odd) {
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.ms-title {
+	font-weight: 700;
+}
+
+.ms-main small {
+	display: block;
+	color: var(--muted);
+	font-size: 12.5px;
+}
+
+.ms-figs {
+	display: flex;
+	gap: 16px;
+}
+
+.ms-fig {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	min-width: 64px;
+}
+
+.ms-fig small {
+	color: var(--muted);
+	font-size: 11px;
+}
+
+.ms-total {
+	display: flex;
+	gap: 12px;
+	align-items: baseline;
+	justify-content: flex-end;
+	padding: 8px 10px 0;
+	border-top: 1px solid var(--line);
+	margin-top: 4px;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1001,6 +1076,7 @@ body.overlay.off-job #pin {
 				<h1><span></span>Haul Planner</h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
+				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
 				<button class="btn primary" id="refresh" title="Reads all your storages from the TT API (4 requests)">Refresh storages</button>
 				<div class="stats">
 					<div><small>Steps done</small><b id="statSteps">0</b></div>
@@ -1107,6 +1183,16 @@ body.overlay.off-job #pin {
 					<button class="btn" data-close>Close</button>
 				</header>
 				<div class="body" id="storageList"></div>
+			</div>
+		</div>
+
+		<div class="modal" id="makeSellModal" hidden>
+			<div class="sheet wide">
+				<header>
+					<h2>Make &amp; Sell</h2>
+					<button class="btn" data-close>Close</button>
+				</header>
+				<div class="body" id="makeSellBody"></div>
 			</div>
 		</div>
 
@@ -1333,7 +1419,7 @@ for (const [id, v] of Object.entries(VEHICLES)) {
 //   lists: "2 scrap_copper, 1 scrap_tin"
 //   opts.p: default priority, opts.path: menu path "A > B", opts.hm: highest
 //   multiplier, opts.hp: its menu path, opts.exp: exported item for sales,
-//   opts.bonus: [n, name] extra reward shown on the card (not planned),
+//   opts.bonus: [n, name, value] extra reward (value counted in Make & Sell),
 //   opts.unverified: menu path not yet confirmed in-game,
 //   opts.sd: name of the SD card that unlocks this recipe
 // Checked against the TT wiki on 26 Sep 2026.
@@ -1370,7 +1456,7 @@ function R(name, type, cost, ins, outs, o = {}) {
 		path,
 		hm,
 		hmPath,
-		bonus: o.bonus ? { name: o.bonus[1], n: o.bonus[0] } : null,
+		bonus: o.bonus ? { name: o.bonus[1], n: o.bonus[0], value: o.bonus[2] || 0 } : null,
 		unverified: !!o.unverified,
 		sd: o.sd || null,
 	};
@@ -1400,7 +1486,7 @@ const LOCATIONS = [
 		R('Sell CollinsCo Boat Vouchers', 'e', -150000, '10 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Voucher x10', hm: 100, hp: 'CollinsCo Boat Vouchers x1000' }),
 	]),
 	L('House Construction Site', '#9b6bc9', [
-		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'Concrete Delivery Token'] }),
+		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'Concrete Delivery Token', 2000000] }),
 	]),
 	L('Hunter: Meat Buyer', '#7a8791', [R('Meat Buyer', 'e', -250, '1 meat', '', { hm: 100 })]),
 	L('Illegal: Defib Kit Charging', '#7a8791', [R('Charge Empty Defib Kit', 'r', 5000, '1 e_defibkit', '1 defibkit', { hm: 2 })]),
@@ -1715,7 +1801,7 @@ function scaleRecipe(r, useHM) {
 	if (!useHM || r.hm <= 1) return { ...r, mult: 1 };
 	const m = r.hm;
 	const sc = (l) => l.map((x) => ({ id: x.id, n: x.n * m }));
-	return { ...r, ins: sc(r.ins), outs: sc(r.outs), exp: r.exp && { id: r.exp.id, n: r.exp.n * m }, cost: r.cost * m, path: r.hmPath, mult: m, bonus: r.bonus && { name: r.bonus.name, n: r.bonus.n * m } };
+	return { ...r, ins: sc(r.ins), outs: sc(r.outs), exp: r.exp && { id: r.exp.id, n: r.exp.n * m }, cost: r.cost * m, path: r.hmPath, mult: m, bonus: r.bonus && { ...r.bonus, n: r.bonus.n * m } };
 }
 
 function unitWeights(r) {
@@ -1734,6 +1820,12 @@ function plannableItems() {
 	return [...ids].sort((a, b) => itemName(a).localeCompare(itemName(b)));
 }
 
+// Money earned per item sold, counting any bonus reward (e.g. house tokens).
+function unitPrice(r) {
+	const bonus = r.bonus ? r.bonus.n * r.bonus.value : 0;
+	return (-r.cost + bonus) / r.exp.n;
+}
+
 // --- Planner ---
 // targets: [{ id, n }]
 // storages: [{ id, name, prio, items: Map }]
@@ -1748,7 +1840,8 @@ function solve(targets, storages, opts) {
 		const p = prioOf(r);
 		if (r.type === 'export') {
 			const cur = sellers[r.exp.id];
-			if (!cur || p > prioOf(cur)) sellers[r.exp.id] = r;
+			// Equal priority: prefer the place that pays more per item.
+			if (!cur || p > prioOf(cur) || (p === prioOf(cur) && unitPrice(r) > unitPrice(cur))) sellers[r.exp.id] = r;
 		} else {
 			for (const o of r.outs) {
 				const cur = producers[o.id];
@@ -1995,6 +2088,124 @@ function choiceMatches(choiceText, match) {
 	if (match.text != null) return t === match.text;
 	if (match.suffix != null) return t.endsWith(match.suffix);
 	return false;
+}
+
+// --- Make & Sell analysis ---
+// storages: [{ id, name, prio, items: Map }]; vehicles as for loadPlan.
+// Every function here is independent of the main plan and never changes stock.
+
+function sellableItems(usable) {
+	const best = new Map();
+	for (const r of RECIPES) {
+		if (r.type !== 'export' || !usable(r)) continue;
+		const cur = best.get(r.exp.id);
+		if (!cur || unitPrice(r) > unitPrice(cur)) best.set(r.exp.id, r);
+	}
+	return best;
+}
+
+function evaluate(id, n, pool, env) {
+	const res = solve([{ id, n }], pool, { useHM: false, sell: true, prioOf: env.prioOf, usable: env.usable });
+	const t = planTotals(res, env.vehicles, env.optimal);
+	let bonus = 0;
+	let crafting = false;
+	let pickups = false;
+	for (const nd of res.nodes) {
+		if (nd.kind !== 'recipe') continue;
+		if (nd.recipe.bonus) bonus += nd.recipe.bonus.n * nd.recipe.bonus.value * nd.crafts;
+		if (nd.recipe.type !== 'export') crafting = true;
+		if (!nd.recipe.ins.length) pickups = true;
+	}
+	const missing = res.nodes.some((nd) => nd.kind === 'missing');
+	return { id, n, res, runs: t.runs, cost: t.cost, revenue: t.revenue + bonus, profit: t.revenue + bonus - t.cost, crafting, pickups, missing };
+}
+
+// Largest n for which test(evaluate(n)) holds, assuming it holds up to some point.
+function largest(id, pool, env, test, cap = 200000) {
+	let good = null;
+	let lo = 0;
+	let hi = 1;
+	while (hi <= cap) {
+		const e = evaluate(id, hi, pool, env);
+		if (!test(e)) break;
+		good = e;
+		lo = hi;
+		hi *= 2;
+	}
+	if (!good) return null;
+	hi = Math.min(hi, cap + 1);
+	while (hi - lo > 1) {
+		const mid = Math.floor((lo + hi) / 2);
+		const e = evaluate(id, mid, pool, env);
+		if (test(e)) {
+			good = e;
+			lo = mid;
+		} else hi = mid;
+	}
+	return good;
+}
+
+const fromStockOnly = (e) => !e.missing && !e.pickups;
+
+// What each sellable product could be made from stock alone (either/or).
+function makeFromStock(pool, env) {
+	const out = [];
+	for (const id of sellableItems(env.usable).keys()) {
+		const e = largest(id, pool, env, fromStockOnly);
+		if (e && e.crafting && e.profit > 0) out.push(e);
+	}
+	return out.sort((a, b) => b.profit - a.profit);
+}
+
+// Items in storage that can be sold without any crafting.
+function sellAsIs(pool, env) {
+	const sellers = sellableItems(env.usable);
+	const have = new Map();
+	for (const s of pool) if (s.prio >= 0) for (const [id, k] of s.items) if (k > 0) have.set(id, (have.get(id) || 0) + k);
+	const out = [];
+	for (const [id, k] of have) {
+		const r = sellers.get(id);
+		if (!r) continue;
+		const sellable = Math.floor(k / r.exp.n) * r.exp.n;
+		if (sellable > 0) out.push({ id, n: sellable, value: sellable * unitPrice(r), where: r.loc });
+	}
+	return out.sort((a, b) => b.value - a.value);
+}
+
+// Removes what a plan takes from storages, returning a new pool.
+function consume(pool, res) {
+	const next = pool.map((s) => ({ ...s, items: new Map(s.items) }));
+	for (const nd of res.nodes) {
+		if (nd.kind !== 'storage') continue;
+		const s = next.find((x) => x.id === nd.storageId);
+		if (!s) continue;
+		for (const [id, k] of nd.takes) s.items.set(id, Math.max(0, (s.items.get(id) || 0) - k));
+	}
+	return next;
+}
+
+// Greedy: make the most profitable thing, set its stock aside, repeat.
+function bestUseOfStock(pool, env, rounds = 6) {
+	const picks = [];
+	let cur = pool;
+	for (let i = 0; i < rounds; i++) {
+		const options = makeFromStock(cur, env).concat(sellAsIs(cur, env).map((x) => evaluate(x.id, x.n, cur, env)));
+		const best = options.filter((e) => e.profit > 0).sort((a, b) => b.profit - a.profit)[0];
+		if (!best) break;
+		picks.push(best);
+		cur = consume(cur, best.res);
+	}
+	return picks;
+}
+
+// Best money per run when pickups are allowed, using stock where it helps.
+function grindIdeas(pool, env, runBudget = 20) {
+	const out = [];
+	for (const id of sellableItems(env.usable).keys()) {
+		const e = largest(id, pool, env, (x) => !x.missing && x.runs <= runBudget, 50000);
+		if (e && e.runs > 0 && e.profit > 0) out.push({ ...e, perRun: e.profit / e.runs });
+	}
+	return out.sort((a, b) => b.perRun - a.perRun);
 }
 
 
@@ -3259,6 +3470,146 @@ function renderRecipes() {
 	}
 }
 
+// ---------- Make & Sell ----------
+function analysisPool() {
+	const activeIds = new Set(S.vehicles.map((v) => v.id));
+	return [...S.storages.values()]
+		.filter((s) => (s.kind === 'vehicle' ? activeIds.has(s.id) : s.kind === 'inventory' ? S.settings.useInventory : true))
+		.map((s) => ({ id: s.id, name: s.name, prio: storagePrio(s), items: s.items }));
+}
+
+function analysisEnv() {
+	return {
+		vehicles: S.vehicles,
+		optimal: S.settings.optimal,
+		prioOf: (r) => S.recipePrio[r.key] ?? r.prio,
+		usable: (r) => !r.sd || !!S.sdOwned[r.sd],
+	};
+}
+
+function planTargets(list) {
+	S.targets = list.map((x) => ({ id: x.id, n: x.n }));
+	S.settings.sell = true;
+	document.querySelector('[data-setting="sell"]').checked = true;
+	saveSettings();
+	store.set('targets', S.targets);
+	resetProgress(false);
+	renderTargets();
+	closeModals();
+	replan();
+}
+
+// The biggest stock items a plan draws on, for "uses your …" hints.
+function stockUsed(res, limit = 3) {
+	const used = new Map();
+	for (const nd of res.nodes) if (nd.kind === 'storage') for (const [id, k] of nd.takes) used.set(id, (used.get(id) || 0) + k);
+	return [...used]
+		.sort((a, b) => b[1] * itemWeight(b[0]) - a[1] * itemWeight(a[0]))
+		.slice(0, limit)
+		.map(([id, k]) => `${fmt(k)} ${itemName(id)}`)
+		.join(', ');
+}
+
+function openMakeSell() {
+	openModal('#makeSellModal');
+	const body = $('#makeSellBody');
+	body.textContent = '';
+	if (!S.storages.size) {
+		body.append(h('p', { class: 'hint', text: 'No storage data yet. Press “Refresh storages”, or open your chests in-game, then come back here.' }));
+		return;
+	}
+	body.append(h('p', { class: 'hint', text: 'Working it out…' }));
+	// Let the window paint before the heavier maths runs.
+	setTimeout(() => renderMakeSell(body), 30);
+}
+
+function renderMakeSell(body) {
+	const pool = analysisPool();
+	const env = analysisEnv();
+	const best = bestUseOfStock(pool, env);
+	const make = makeFromStock(pool, env);
+	const grind = grindIdeas(pool, env).slice(0, 8);
+	const asIs = sellAsIs(pool, env);
+	body.textContent = '';
+
+	const perRun = (e) => (e.runs > 0 ? money(e.profit / e.runs) : '—');
+	const tokenNote = (e) => (e.res.nodes.some((nd) => nd.recipe?.bonus) ? ' (includes Concrete Delivery Tokens at $2M each, paid on the Concrete Delivery job)' : '');
+	const row = (main, sub, figures, action) =>
+		h('div', { class: 'ms-row' }, h('div', { class: 'ms-main' }, h('div', { class: 'ms-title', text: main }), sub ? h('small', { text: sub }) : null), h('div', { class: 'ms-figs' }, figures), action || null);
+	const fig = (label, value, cls) => h('div', { class: 'ms-fig' }, h('small', { text: label }), h('b', { class: cls || '', text: value }));
+
+	// 1. Best use of stock
+	const bestTotal = best.reduce((sum, e) => sum + e.profit, 0);
+	const bestRuns = best.reduce((sum, e) => sum + e.runs, 0);
+	body.append(
+		h(
+			'section',
+			{ class: 'ms-section' },
+			h('div', { class: 'ms-head' }, h('h3', { text: 'Best use of your stock' }), best.length ? h('button', { class: 'btn primary', text: 'Plan all of this', onclick: () => planTargets(best) }) : null),
+			h('p', { class: 'hint', text: 'Using only what you already have, no pickups. Each line uses stock the lines above leave behind.' }),
+			best.length
+				? [
+						...best.map((e, i) =>
+							row(`${i + 1}. ${e.crafting ? 'Make' : 'Sell'} ${fmt(e.n)} ${itemName(e.id)}`, (e.crafting ? 'Uses ' + stockUsed(e.res) : 'Already in storage') + tokenNote(e), [fig('Profit', money(e.profit), 'money-in'), fig('Runs', fmt(e.runs)), fig('Per run', perRun(e))])
+						),
+						h('div', { class: 'ms-total' }, h('span', { text: 'Total' }), h('b', { class: 'money-in', text: money(bestTotal) }), h('span', { class: 'hint', text: `${fmt(bestRuns)} runs` })),
+					]
+				: h('p', { class: 'hint', text: 'Nothing profitable can be made from your stock alone. See the grind ideas below.' })
+		)
+	);
+
+	// 2. Grind ideas
+	body.append(
+		h(
+			'section',
+			{ class: 'ms-section' },
+			h('h3', { text: 'What to grind' }),
+			h('p', { class: 'hint', text: 'Best money per run for about 20 runs of work, including pickups. Items your stock already covers get cheaper, so they rank higher. Runs count trips, not driving distance.' }),
+			grind.length
+				? grind.map((e) => {
+						const uses = stockUsed(e.res);
+						return row(
+							itemName(e.id),
+							`${fmt(e.n)} for ${money(e.profit)} over ${fmt(e.runs)} runs` + (uses ? `, uses your ${uses}` : '') + tokenNote(e),
+							[fig('Per run', perRun(e), 'money-in')],
+							h('button', { class: 'btn', text: 'Plan this', onclick: () => planTargets([e]) })
+						);
+					})
+				: h('p', { class: 'hint', text: 'No ideas found. Check your vehicles are set up under Vehicles.' })
+		)
+	);
+
+	// 3. Make now (either/or)
+	body.append(
+		h(
+			'section',
+			{ class: 'ms-section' },
+			h('h3', { text: 'What you can make right now' }),
+			h('p', { class: 'hint', text: 'The most of each item your stock allows, no pickups. These share the same stock, so pick one or use the best-use plan above.' }),
+			make.length
+				? make.map((e) => row(`${fmt(e.n)} ${itemName(e.id)}`, 'Uses ' + stockUsed(e.res) + tokenNote(e), [fig('Profit', money(e.profit), 'money-in'), fig('Runs', fmt(e.runs)), fig('Per run', perRun(e))], h('button', { class: 'btn', text: 'Plan this', onclick: () => planTargets([e]) })))
+				: h('p', { class: 'hint', text: 'Nothing can be crafted from stock alone.' })
+		)
+	);
+
+	// 4. Sell as-is
+	const asIsTotal = asIs.reduce((sum, x) => sum + x.value, 0);
+	body.append(
+		h(
+			'section',
+			{ class: 'ms-section' },
+			h('h3', { text: 'Sell as-is' }),
+			h('p', { class: 'hint', text: 'Items already in storage that sell without crafting. Often worth more crafted, so check the lists above first.' }),
+			asIs.length
+				? [
+						...asIs.map((x) => row(`${fmt(x.n)} ${itemName(x.id)}`, 'at ' + locShort(x.where), [fig('Value', money(x.value), 'money-in')])),
+						h('div', { class: 'ms-total' }, h('span', { text: 'Total' }), h('b', { class: 'money-in', text: money(asIsTotal) })),
+					]
+				: h('p', { class: 'hint', text: 'Nothing in storage sells as-is.' })
+		)
+	);
+}
+
 // ---------- Start-up ----------
 function init() {
 	bindSettings();
@@ -3293,6 +3644,7 @@ function init() {
 		renderRecipes();
 		openModal('#recipesModal');
 	};
+	$('#openMakeSell').onclick = openMakeSell;
 	$('#storageSearch').oninput = renderStorages;
 	$('#recipeSearch').oninput = renderRecipes;
 	$('#resetPrio').onclick = () => {
