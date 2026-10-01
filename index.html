@@ -1067,6 +1067,220 @@ body.overlay.off-job #pin {
 	margin-top: 4px;
 }
 
+/* ---------- Compact pinned card ---------- */
+#pin {
+	width: 300px;
+	padding: 0 10px 10px 14px;
+	font-size: 12.5px;
+}
+
+#pin .pin-close {
+	display: none;
+}
+
+.pin-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 4px;
+}
+
+.pin-head .step,
+.pin-head .icon-btn {
+	margin-top: 2px;
+}
+
+.pin-head .step {
+	min-width: 22px;
+	height: 22px;
+	font-size: 12px;
+	margin-right: 4px;
+}
+
+.pin-titles {
+	flex: 1;
+	min-width: 0;
+}
+
+.pin-titles .where {
+	font-size: 11px;
+	color: var(--muted);
+	line-height: 1.1;
+}
+
+.pin-name {
+	font-weight: 700;
+	font-size: 14.5px;
+	line-height: 1.2;
+}
+
+.icon-btn {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--asphalt-3);
+	cursor: pointer;
+	font-size: 15px;
+	line-height: 1;
+}
+
+.icon-btn:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.pin-summary {
+	margin: 4px 0 6px;
+	color: var(--muted);
+}
+
+#pin.collapsed .pin-summary {
+	margin-bottom: 0;
+}
+
+.pin-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 6px;
+}
+
+.pin-table th {
+	text-align: right;
+	font-weight: 400;
+	font-size: 11px;
+	color: var(--muted);
+	padding: 0 0 2px;
+}
+
+.pin-table th:first-child,
+.pin-table td:first-child {
+	text-align: left;
+}
+
+.pin-table td {
+	text-align: right;
+	padding: 1px 0;
+	border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pin-table td + td {
+	padding-left: 8px;
+	white-space: nowrap;
+}
+
+.pin-table tr.makes td {
+	color: var(--go);
+}
+
+.carrying {
+	display: grid;
+	gap: 4px;
+	padding: 6px 8px;
+	margin-bottom: 6px;
+	border-radius: var(--radius-control);
+	background: var(--asphalt);
+}
+
+.veh-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.veh-head b {
+	min-width: 34px;
+	font-size: 12px;
+}
+
+.veh-head .meter {
+	flex: 1;
+	margin: 0;
+}
+
+.veh-kg {
+	color: var(--muted);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.veh-items {
+	font-size: 12px;
+	color: var(--paint);
+	padding-left: 40px;
+}
+
+.veh-items .relevant {
+	color: var(--amber);
+	font-weight: 700;
+}
+
+.veh-items .hint {
+	font-size: 11.5px;
+}
+
+#pin .pin-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	align-items: center;
+}
+
+.btn.small {
+	padding: 3px 9px;
+	font-size: 12.5px;
+}
+
+.pill {
+	padding: 2px 8px;
+	border: 1px solid var(--line);
+	border-radius: 11px;
+	background: none;
+	color: var(--muted);
+	font-size: 11.5px;
+	cursor: pointer;
+}
+
+.pill.on {
+	border-color: var(--go);
+	color: var(--go);
+}
+
+.pin-chipitems {
+	margin: 4px 0 6px;
+	font-weight: 600;
+}
+
+#pin .path {
+	margin: 5px 0 0;
+	font-size: 11.5px;
+}
+
+.pin-details {
+	margin-top: 6px;
+}
+
+.pin-details summary {
+	cursor: pointer;
+	color: var(--muted);
+	font-size: 11.5px;
+}
+
+.pin-details .load {
+	margin: 4px 0 0;
+	padding: 5px 8px;
+}
+
+body.overlay #pin {
+	width: 270px;
+}
+
+body.overlay #pin .pin-actions,
+body.overlay #pin .icon-btn,
+body.overlay #pin .pin-details {
+	display: none;
+}
+
 		</style>
 	</head>
 	<body>
@@ -2943,109 +3157,120 @@ function renderPin() {
 	}
 	box.hidden = false;
 	box.style.removeProperty('--stripe');
-	box.append(h('button', { class: 'x pin-close', title: 'Unpin', text: '×', onclick: () => setPinned(null) }));
+	const collapsed = !!store.get('pinCollapsed', false);
+	box.classList.toggle('collapsed', collapsed);
+	const idx = S.order.indexOf(n.key);
+	const isRecipe = n.kind === 'recipe';
+	const r = isRecipe ? n.recipe : null;
+	const info = isRecipe ? nodeRuns(n, S.vehicles, S.settings.optimal) : null;
+	if (r) box.style.setProperty('--stripe', r.color);
 
-	if (n.kind !== 'recipe') {
-		box.append(h('div', { class: 'where', text: n.kind === 'storage' ? 'Take from storage' : n.kind === 'missing' ? 'Needs sourcing' : 'Keep' }), h('h2', { text: n.label }));
-		const ul = h('ul');
-		for (const [id, amount] of n.takes) ul.append(h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(amount) })));
-		box.append(h('div', { class: 'load' }, ul), ...flowLists(n));
+	// Header: step, name, navigation, collapse, close. All on one row.
+	const iconBtn = (text, title, onclick, disabled) => h('button', { class: 'icon-btn', text, title, onclick, disabled });
+	box.append(
+		h(
+			'div',
+			{ class: 'pin-head' },
+			isRecipe ? h('span', { class: 'step', text: String(stepNumber(n.key)) }) : null,
+			h(
+				'div',
+				{ class: 'pin-titles' },
+				h('div', { class: 'where', text: isRecipe ? locShort(r.loc) : n.kind === 'storage' ? 'Storage' : n.kind === 'missing' ? 'Get it yourself' : 'Keep' }),
+				h('div', { class: 'pin-name', text: isRecipe ? r.name : n.label })
+			),
+			iconBtn('‹', 'Previous step', () => stepPin(-1), idx <= 0),
+			iconBtn('›', 'Next step', () => stepPin(1), idx === -1 || idx >= S.order.length - 1),
+			iconBtn(collapsed ? '+' : '–', collapsed ? 'Expand' : 'Collapse', () => {
+				store.set('pinCollapsed', !collapsed);
+				renderPin();
+			}),
+			iconBtn('×', 'Unpin', () => setPinned(null))
+		)
+	);
+
+	if (isRecipe) {
+		const runsText = Number.isFinite(info.runs) ? `${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : 'too heavy for your vehicles';
+		box.append(h('div', { class: 'pin-summary', text: `${fmt(n.crafts)} crafts left, ${runsText}` + (info.runs > 1 ? `, ${fmt(info.runCrafts)} this run` : '') }));
+	}
+	if (collapsed) return;
+
+	if (!isRecipe) {
+		box.append(h('div', { class: 'pin-chipitems', text: [...n.takes].map(([id, k]) => `${itemName(id)} ${fmt(k)}x`).join(', ') }));
+		box.append(detailsBlock(n));
 		return;
 	}
 
-	const r = n.recipe;
-	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
-	box.style.setProperty('--stripe', r.color);
-	box.append(
-		h('div', { class: 'where', text: `Step ${stepNumber(n.key)} of ${S.order.length}, ${locShort(r.loc)}` }),
-		h('h2', { text: r.name }),
+	// One table: each item with this run's split and the total still left.
+	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
+	const order = displayOrder().map(({ v }) => (v.id === 'inventory' ? 'Inv' : v.cab ? 'MK15' : v.name));
+	const table = h(
+		'table',
+		{ class: 'pin-table' },
+		h('thead', {}, h('tr', {}, h('th', { text: r.ins.length ? 'Load' : 'Collect' }), h('th', { text: order.join('/'), title: 'This run, split across your vehicles' }), h('th', { text: 'Left' }))),
 		h(
-			'div',
-			{ class: 'pin-meta' },
-			h('div', {}, h('small', { text: 'Runs' }), h('b', { text: Number.isFinite(info.runs) ? fmt(info.runs) : '—' })),
-			h('div', {}, h('small', { text: 'Crafts' }), h('b', { text: fmt(n.crafts) })),
-			h('div', {}, h('small', { text: 'This run' }), h('b', { text: fmt(info.runCrafts) }))
+			'tbody',
+			{},
+			items.map((x) => h('tr', {}, h('td', { text: itemName(x.id) }), h('td', { text: splitText(info.loads, x.id, field) }), h('td', { text: fmt(x.n * n.crafts) }))),
+			r.ins.length ? r.outs.map((x) => h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Makes ' + itemName(x.id) }), h('td', { text: fmt(x.n * n.crafts) }))) : null,
+			r.bonus ? h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Plus ' + r.bonus.name }), h('td', { text: fmt(r.bonus.n * n.crafts) })) : null
 		)
 	);
-	if (!Number.isFinite(info.runs)) box.append(h('p', { class: 'hint', text: 'One craft is heavier than all your vehicles combined. Pick a bigger trailer.' }));
-
-	// Everything this step still has to do, not just this run.
-	const leftRows = [];
-	leftRows.push(h('li', {}, h('span', { text: 'Crafts' }), h('span', { text: `${fmt(n.crafts)}${Number.isFinite(info.runs) ? `, ${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : ''}` })));
-	for (const x of r.outs) leftRows.push(h('li', {}, h('span', { text: 'Makes ' + itemName(x.id) }), h('span', { text: fmt(x.n * n.crafts) })));
-	for (const x of r.ins) leftRows.push(h('li', {}, h('span', { text: 'Uses ' + itemName(x.id) }), h('span', { text: fmt(x.n * n.crafts) })));
-	box.append(h('div', { class: 'load' }, h('h3', { text: 'Left in total' }), h('ul', {}, leftRows)));
-
-	for (const load of info.loads) {
-		if (!load.items.length && !(load.products || []).length) continue;
-		const v = S.vehicles[load.vehicle];
-		box.append(
-			h(
-				'div',
-				{ class: 'load' },
-				h('h3', { text: v.name }),
-				h('ul', {}, (load.items.length ? load.items : load.products || []).map((x) => h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: fmt(x.n) }))))
-			)
-		);
-	}
-	if (r.bonus) box.append(h('p', { class: 'path', text: `Also earns ${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}.` }));
-	if (r.path.length && !S.settings.automation) box.append(h('p', { class: 'path', text: 'Menu: ' + r.path.join(' › ') + (r.unverified ? ' (not yet confirmed in-game)' : '') }));
+	box.append(table);
 
 	box.append(carryingNow(new Set([...r.ins, ...r.outs].map((x) => x.id))));
 
+	// Actions: one row of buttons, plus small toggles.
 	const auto = S.settings.automation;
-	const hasLoad = r.ins.length > 0;
-	const section = (title, ...body) => h('div', { class: 'todo' }, h('h3', { text: title }), ...body);
-
 	if (!auto) {
 		box.append(
-			section(
-				'Automation is off',
-				h('p', { class: 'hint', text: 'You can still follow the numbers above by hand. Turn automation on to have the planner click through the menus for you.' }),
-				h('button', { class: 'btn primary', text: 'Turn on automation', onclick: () => setSetting('automation', true) })
+			h(
+				'div',
+				{ class: 'pin-actions' },
+				h('button', { class: 'btn small', text: 'Turn on automation', title: 'Lets the planner click through menus for you', onclick: () => setSetting('automation', true) })
 			)
 		);
+		if (r.path.length) box.append(h('div', { class: 'path', text: 'Menu: ' + r.path.join(' › ') }));
 	} else {
-		if (hasLoad) {
-			box.append(
-				section(
-					'1. At a storage',
-					h('p', { class: 'hint', text: `Open the storage menu, then press Load. It ${S.settings.dumpFirst ? 'empties your trunks and ' : ''}takes the amounts above into each trunk.` }),
-					h('div', { class: 'pin-actions' }, h('button', { class: 'btn primary', text: 'Load this run', disabled: !!S.busy, onclick: loadPinned }), h('button', { class: 'btn', text: 'Only empty trunks', disabled: !!S.busy, onclick: dumpTrunks }))
-				)
-			);
-		}
 		box.append(
-			section(
-				(hasLoad ? '2. ' : '1. ') + 'At ' + locShort(r.loc),
-				h('p', { class: 'hint', text: r.path.length ? (S.settings.autoRecipe ? `Open the menu and ${r.path.join(' › ')} is selected for you.` : 'Open the menu and choose ' + r.path.join(' › ') + '.') + (r.unverified ? ' (Menu wording not yet confirmed in-game.)' : '') : 'Do this step by hand.' }),
-				toggleRow('autoRecipe', 'Auto-select this recipe'),
-				toggleRow('autoTrunk', 'Open the right trunk when inventory is full')
+			h(
+				'div',
+				{ class: 'pin-actions' },
+				r.ins.length
+					? h('button', { class: 'btn small primary', text: 'Load this run', title: `At a storage with its menu open: ${S.settings.dumpFirst ? 'empties your trunks, then ' : ''}loads the amounts above`, disabled: !!S.busy, onclick: loadPinned })
+					: null,
+				h('button', { class: 'btn small', text: 'Empty trunks', title: 'At a storage with its menu open', disabled: !!S.busy, onclick: dumpTrunks }),
+				pill('autoRecipe', 'Auto-select', r.path.length ? 'Picks ' + r.path.join(' › ') + ' when you open the menu' : 'No menu path for this step'),
+				pill('autoTrunk', 'Auto-trunk', 'Opens the right trunk when inventory is full')
 			)
 		);
 	}
-	const idx = S.order.indexOf(n.key);
-	box.append(
-		h(
-			'div',
-			{ class: 'pin-actions finish' },
-			h('button', { class: 'btn', text: '‹ Previous', disabled: idx <= 0, onclick: () => stepPin(-1) }),
-			h('button', { class: 'btn', text: 'Next step ›', disabled: idx === -1 || idx >= S.order.length - 1, onclick: () => stepPin(1) })
-		),
-		h('p', { class: 'hint', text: 'This step finishes by itself once its items show up in your storages.' })
-	);
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
-	box.append(...flowLists(n));
+	box.append(detailsBlock(n));
+}
+
+function pill(key, label, title) {
+	const on = !!S.settings[key];
+	return h('button', { class: 'pill' + (on ? ' on' : ''), title, text: label + (on ? ' on' : ' off'), onclick: () => setSetting(key, !on) });
+}
+
+// "Comes from / Used for", folded away by default.
+function detailsBlock(n) {
+	const lists = flowLists(n);
+	if (!lists.length) return '';
+	const d = h('details', { class: 'pin-details flow' }, h('summary', { text: 'Details: where items come from and go' }), ...lists);
+	d.open = !!store.get('pinDetailsOpen', false);
+	d.addEventListener('toggle', () => store.set('pinDetailsOpen', d.open));
+	return d;
 }
 
 // What is in your inventory and trunks right now, from the latest game or
 // API data. Items the pinned step uses or makes are highlighted.
 function carryingNow(relevant) {
-	const wrap = h('div', { class: 'load carrying' }, h('h3', { text: 'Carrying now' }));
+	const wrap = h('div', { class: 'carrying' });
 	for (const { v } of displayOrder()) {
 		const st = S.storages.get(v.id);
 		// Hide weightless items (cards, tokens, unknown extras) unless this step needs them.
-		const items = st ? [...st.items].filter(([id, k]) => k > 0 && (itemWeight(id) > 0 || relevant.has(id))).sort((a, b) => (relevant.has(b[0]) - relevant.has(a[0])) || b[1] - a[1]) : [];
+		const items = st ? [...st.items].filter(([id, k]) => k > 0 && (itemWeight(id) > 0 || relevant.has(id))).sort((a, b) => relevant.has(b[0]) - relevant.has(a[0]) || b[1] - a[1]) : [];
 		let used = items.reduce((sum, [id, k]) => sum + itemWeight(id) * k, 0);
 		let cap = v.cap;
 		if (v.id === 'inventory' && Number(S.game.max_weight) > 0) {
@@ -3054,20 +3279,22 @@ function carryingNow(relevant) {
 			if (S.game.weight != null) used = Number(S.game.weight);
 		}
 		const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
-		const block = h(
-			'div',
-			{ class: 'vehicle' },
-			h('div', { class: 'vehicle-head' }, h('span', { text: v.name }), h('span', { text: st ? `${fmt(used)} / ${fmt(cap)} kg` : 'not opened yet' })),
-			h('div', { class: 'meter' + (pct >= 95 ? ' full' : '') }, h('span', { style: `width:${pct}%` }))
+		const contents = h('div', { class: 'veh-items' });
+		if (!st) contents.append(h('span', { class: 'hint', text: 'not opened yet' }));
+		else if (!items.length) contents.append(h('span', { class: 'hint', text: [...st.items.values()].some((k) => k > 0) ? 'nothing with weight' : 'empty' }));
+		else
+			items.forEach(([id, k], i) => {
+				if (i) contents.append(', ');
+				contents.append(h('span', { class: relevant.has(id) ? 'relevant' : '', text: `${itemName(id)} ${fmt(k)}` }));
+			});
+		wrap.append(
+			h(
+				'div',
+				{ class: 'veh' },
+				h('div', { class: 'veh-head' }, h('b', { text: v.id === 'inventory' ? 'Inv' : v.cab ? 'MK15' : v.name }), h('div', { class: 'meter' + (pct >= 95 ? ' full' : '') }, h('span', { style: `width:${pct}%` })), h('span', { class: 'veh-kg', text: st ? `${fmt(used)}/${fmt(cap)} kg` : '' })),
+				contents
+			)
 		);
-		if (st && !items.length) block.append(h('div', { class: 'hint', text: [...st.items.values()].some((k) => k > 0) ? 'Nothing with weight' : 'Empty' }));
-		const shown = items.slice(0, 6);
-		if (shown.length)
-			block.append(
-				h('ul', {}, shown.map(([id, k]) => h('li', { class: relevant.has(id) ? 'relevant' : '' }, h('span', { text: itemName(id) }), h('span', { text: fmt(k) }))))
-			);
-		if (items.length > shown.length) block.append(h('div', { class: 'hint', text: `+${items.length - shown.length} more` }));
-		wrap.append(block);
 	}
 	return wrap;
 }
