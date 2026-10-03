@@ -2918,16 +2918,39 @@ async function refreshFromApi() {
 
 // ---------- Planning ----------
 // ---------- Selling phase ----------
-// Once a target to sell is fully made, record how many you had. Any drop in
-// stock after that counts as sold, so selling never reopens earlier steps.
+// Once you hold every material the final step needs for the full amount
+// (finished bronze for a bronze sale; wire, rebar, concrete, planks, tiles
+// and computers for houses), record those stock levels. From then on, used-up
+// material sets count as done, so the final step never reopens earlier steps.
 function stockOf(id, pool) {
 	let n = 0;
 	for (const s of pool) if (s.prio >= 0) n += s.items.get(id) || 0;
 	return n;
 }
 
-function sellsTarget(id) {
-	return S.settings.sell && RECIPES.some((r) => r.type === 'export' && r.exp.id === id);
+// The sale the planner will use for an item (same choice as the planner).
+function sellerFor(id) {
+	if (!S.settings.sell) return null;
+	const prio = (r) => S.recipePrio[r.key] ?? r.prio;
+	let best = null;
+	for (const r of RECIPES) {
+		if (r.type !== 'export' || r.exp.id !== id) continue;
+		if (r.sd && !S.sdOwned[r.sd]) continue;
+		if (!best || prio(r) > prio(best) || (prio(r) === prio(best) && unitPrice(r) > unitPrice(best))) best = r;
+	}
+	return best;
+}
+
+// How many of the target are done. The final step uses all its materials at
+// once, so the material that has gone down the most shows how far along you
+// are; counting that way means one item running low can't reopen the route.
+function soldSoFar(t, seller, start, pool) {
+	let sets = 0;
+	for (const ing of seller.ins) {
+		const used = Math.max(0, (start[ing.id] || 0) - stockOf(ing.id, pool));
+		sets = Math.max(sets, Math.floor(used / ing.n));
+	}
+	return Math.min(t.n, sets * seller.exp.n);
 }
 
 function sellingTargets(pool) {
@@ -2936,8 +2959,9 @@ function sellingTargets(pool) {
 	return S.targets
 		.map((t) => {
 			const start = phase?.start[t.id];
-			if (start == null || !sellsTarget(t.id)) return t;
-			const sold = Math.min(t.n, Math.max(0, start - stockOf(t.id, pool)));
+			const seller = sellerFor(t.id);
+			if (!start || !seller) return t;
+			const sold = soldSoFar(t, seller, start, pool);
 			S.sellInfo.set(t.id, { sold, of: t.n });
 			return { ...t, n: t.n - sold };
 		})
@@ -2949,18 +2973,23 @@ function enterSellPhase(pool) {
 	if (!S.sellPhase || S.sellPhase.key !== key) S.sellPhase = { key, start: {}, announced: {} };
 	let changed = false;
 	for (const t of S.targets) {
-		if (!sellsTarget(t.id)) continue;
-		if (S.sellPhase.start[t.id] == null && stockOf(t.id, pool) >= t.n) {
-			S.sellPhase.start[t.id] = stockOf(t.id, pool);
-			S.sellInfo.set(t.id, { sold: 0, of: t.n });
-			log(`All ${fmt(t.n)} ${itemName(t.id)} made. Selling from here won't reopen earlier steps.`);
-			changed = true;
+		const seller = sellerFor(t.id);
+		if (!seller) continue;
+		if (!S.sellPhase.start[t.id]) {
+			const crafts = Math.ceil(t.n / seller.exp.n);
+			const ready = seller.ins.every((ing) => stockOf(ing.id, pool) >= ing.n * crafts);
+			if (ready) {
+				S.sellPhase.start[t.id] = Object.fromEntries(seller.ins.map((ing) => [ing.id, stockOf(ing.id, pool)]));
+				S.sellInfo.set(t.id, { sold: 0, of: t.n });
+				log(`Everything for ${fmt(t.n)} ${itemName(t.id)} is ready. From here, earlier steps won't reopen.`);
+				changed = true;
+			}
 		}
 		const info = S.sellInfo.get(t.id);
 		if (info && info.sold >= info.of && !S.sellPhase.announced[t.id]) {
 			S.sellPhase.announced[t.id] = true;
-			notify(`All ${fmt(info.of)} ${itemName(t.id)} sold.`);
-			log(`All ${fmt(info.of)} ${itemName(t.id)} sold.`);
+			notify(`All ${fmt(info.of)} ${itemName(t.id)} done.`);
+			log(`All ${fmt(info.of)} ${itemName(t.id)} done.`);
 			changed = true;
 		}
 	}
@@ -3223,7 +3252,7 @@ function cardFor(n) {
 	if (total) list.append(h('li', {}, h('span', { text: total > 0 ? 'Cost' : 'Earns' }), h('span', { class: total > 0 ? 'money-out' : 'money-in', text: money(Math.abs(total)) })));
 	if (r.bonus) list.append(h('li', {}, h('span', { text: 'Plus' }), h('span', { class: 'money-in', text: `${fmt(r.bonus.n * n.crafts)}× ${r.bonus.name}` })));
 	const sold = n.target && r.exp ? S.sellInfo.get(r.exp.id) : null;
-	if (sold) list.append(h('li', {}, h('span', { text: 'Sold' }), h('span', { class: 'money-in', text: `${fmt(sold.sold)} of ${fmt(sold.of)}` })));
+	if (sold) list.append(h('li', {}, h('span', { text: 'Done' }), h('span', { class: 'money-in', text: `${fmt(sold.sold)} of ${fmt(sold.of)}` })));
 	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
 	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
 	card.append(list);
@@ -3574,7 +3603,7 @@ function renderPin() {
 	if (isRecipe) {
 		const runsText = Number.isFinite(info.runs) ? `${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : 'too heavy for your vehicles';
 		const sold = n.target && r.exp ? S.sellInfo.get(r.exp.id) : null;
-		box.append(h('div', { class: 'pin-summary', text: (sold ? `Sold ${fmt(sold.sold)} of ${fmt(sold.of)}. ` : '') + `${fmt(n.crafts)} crafts left, ${runsText}` + (info.runs > 1 ? `, ${fmt(info.runCrafts)} this run` : '') }));
+		box.append(h('div', { class: 'pin-summary', text: (sold ? `Done ${fmt(sold.sold)} of ${fmt(sold.of)}. ` : '') + `${fmt(n.crafts)} crafts left, ${runsText}` + (info.runs > 1 ? `, ${fmt(info.runCrafts)} this run` : '') }));
 	}
 	if (isMove) {
 		const tr = transferRuns(n, S.vehicles);
