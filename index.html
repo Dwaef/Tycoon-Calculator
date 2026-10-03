@@ -1331,6 +1331,17 @@ body.overlay #pin .pin-details {
 	margin: 0 0 4px;
 }
 
+.fixed-section {
+	border-bottom: 1px solid var(--line);
+}
+
+.fixed-title {
+	margin: 0;
+	padding: 10px 14px;
+	font-size: 14px;
+	font-weight: 700;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1361,12 +1372,12 @@ body.overlay #pin .pin-details {
 					</div>
 				</details>
 
-				<details open id="leftoverSection" hidden>
-					<summary>Leftovers</summary>
+				<section id="leftoverSection" class="fixed-section">
+					<h3 class="fixed-title">Leftovers</h3>
 					<div class="section">
 						<div id="leftovers"></div>
 					</div>
-				</details>
+				</section>
 
 				<details open>
 					<summary>Vehicles</summary>
@@ -3023,23 +3034,29 @@ function leftoverRows(list) {
 
 function renderLeftovers() {
 	const box = $('#leftovers');
-	const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
-	const made = S.result ? leftoverList(S.result.surplus, usable) : [];
-	const spare = spareStock(usable);
-	const madeTotal = made.reduce((sum, x) => sum + x.value, 0);
-	const spareTotal = spare.reduce((sum, x) => sum + x.value, 0);
-	$('#statLeftovers').textContent = money(madeTotal + spareTotal);
-	$('#leftoverSection').hidden = !made.length && !spare.length;
 	box.textContent = '';
-	if (made.length) {
-		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'Made by this plan' }), h('span', { class: 'money-in', text: money(madeTotal) })));
-		box.append(h('p', { class: 'hint', text: 'Byproducts this plan makes but doesn’t use. They stay in your trunks after the step that makes them.' }));
-		box.append(...leftoverRows(made));
-	}
-	if (spare.length) {
-		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'Spare stock in your storages' }), h('span', { class: 'money-in', text: money(spareTotal) })));
-		box.append(h('p', { class: 'hint', text: 'Things you already have that this plan doesn’t use, such as byproducts from earlier runs.' }));
-		box.append(...leftoverRows(spare));
+	try {
+		const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
+		const made = S.result ? leftoverList(S.result.surplus, usable).filter((x) => x.n > 0) : [];
+		const spare = spareStock(usable);
+		// Total: this run's leftovers plus spare stock, combined per item.
+		const combined = new Map();
+		for (const x of [...made, ...spare]) combined.set(x.id, (combined.get(x.id) || 0) + x.n);
+		const total = leftoverList(combined, usable).filter((x) => x.value > 0);
+		const madeValue = made.reduce((sum, x) => sum + x.value, 0);
+		const totalValue = total.reduce((sum, x) => sum + x.value, 0);
+		$('#statLeftovers').textContent = money(totalValue);
+
+		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'This run' }), h('span', { class: 'money-in', text: money(madeValue) })));
+		if (made.length) box.append(...leftoverRows(made));
+		else box.append(h('p', { class: 'hint', text: 'This plan makes no byproducts.' }));
+
+		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'Total' }), h('span', { class: 'money-in', text: money(totalValue) })));
+		if (total.length) box.append(...leftoverRows(total));
+		else box.append(h('p', { class: 'hint', text: S.storages.size ? 'Nothing spare to sell.' : 'No storage data yet. Press Refresh storages, or open your chests in-game.' }));
+	} catch (e) {
+		box.append(h('p', { class: 'hint', text: 'Couldn’t work out leftovers: ' + e.message }));
+		log('Leftovers: ' + e.message, 'error');
 	}
 }
 
