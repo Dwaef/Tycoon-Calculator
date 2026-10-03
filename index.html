@@ -1281,6 +1281,41 @@ body.overlay #pin .pin-details {
 	display: none;
 }
 
+.leftover {
+	padding: 5px 0;
+	border-bottom: 1px dashed var(--line);
+}
+
+.leftover:last-child {
+	border-bottom: none;
+}
+
+.leftover-top {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.leftover small {
+	display: block;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+#sidebar details[hidden] {
+	display: none;
+}
+
+.card.transfer {
+	--stripe: #7aa2d6;
+	background: rgba(122, 162, 214, 0.08);
+	border-color: rgba(122, 162, 214, 0.45);
+}
+
+#sidebar select {
+	max-width: 170px;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1297,6 +1332,7 @@ body.overlay #pin .pin-details {
 					<div><small>Runs</small><b id="statRuns">0</b></div>
 					<div><small>Spend</small><b class="spend" id="statCost">$0</b></div>
 					<div><small>Earn</small><b class="earn" id="statRevenue">$0</b></div>
+					<div title="Byproducts the plan makes but doesn't use, at their best sale value"><small>Leftovers</small><b class="earn" id="statLeftovers">$0</b></div>
 				</div>
 			</header>
 
@@ -1307,6 +1343,14 @@ body.overlay #pin .pin-details {
 						<div id="targets"></div>
 						<button class="btn" id="addTarget">Add item</button>
 						<label class="toggle"><input type="checkbox" data-setting="sell" /><span>Sell at the end when possible</span></label>
+					</div>
+				</details>
+
+				<details open id="leftoverSection" hidden>
+					<summary>Leftovers</summary>
+					<div class="section">
+						<p class="hint">Byproducts this plan makes but doesn't use. They stay in your trunks after the step that makes them, so store them or sell them.</p>
+						<div id="leftovers"></div>
 					</div>
 				</details>
 
@@ -1327,6 +1371,16 @@ body.overlay #pin .pin-details {
 							</select>
 						</div>
 						<p class="hint" id="capacity"></p>
+					</div>
+				</details>
+
+				<details>
+					<summary>Storage setup</summary>
+					<div class="section">
+						<p class="hint">Counts the trips spent moving items between storages. Crafting at your faction storage's location uses faction storage; everything else uses your main storage.</p>
+						<label class="toggle"><input type="checkbox" data-setting="hubsOn" /><span>Count trips between storages</span></label>
+						<div class="row"><label for="factionLoc">Faction storage is at</label><select id="factionLoc" data-setting="factionLoc"></select></div>
+						<div class="row"><label for="mainStorage">Keep everything else in</label><select id="mainStorage" data-setting="mainStorage"></select></div>
 					</div>
 				</details>
 
@@ -2165,6 +2219,98 @@ function solve(targets, storages, opts) {
 	return { nodes: [...nodes.values()], edges: [...edges.values()], surplus };
 }
 
+// --- Storage hubs ---
+// hubs: { enabled, factionLoc, mainStorage }
+// Crafting at factionLoc keeps its items in faction storage; everything else
+// lives in mainStorage (e.g. the train network). Items that have to move
+// between storages get a "Move items" step, one per destination step.
+function applyHubs(result, hubs) {
+	if (!hubs || !hubs.enabled) return result;
+	const fLoc = hubs.factionLoc || null;
+	const main = hubs.mainStorage || 'biz_train';
+	const byKey = new Map(result.nodes.map((n) => [n.key, n]));
+	const hubAt = (loc) => (fLoc && loc === fLoc ? 'faction' : main);
+	// Items already in a trunk or your inventory travel with you.
+	const carried = (sid) => {
+		const st = STORAGES[sid];
+		return !st || st.kind === 'vehicle' || st.kind === 'inventory' || st.kind === 'backpack';
+	};
+	const nodes = [...result.nodes];
+	const edges = new Map();
+	const link = (from, to, id, n) => {
+		const k = from + '|' + to + '|' + id;
+		const e = edges.get(k);
+		if (e) e.n += n;
+		else edges.set(k, { from, to, id, n });
+	};
+	// Stage of each step: how far it is from the end of the route. Moves for
+	// steps at the same stage are batched into one trip set.
+	const depth = new Map(result.nodes.map((n) => [n.key, n.target ? 0 : -1]));
+	for (let pass = 0; pass < result.nodes.length; pass++) {
+		let moved = false;
+		for (const e of result.edges) {
+			const d = (depth.get(e.to) ?? 0) + 1;
+			if (d > (depth.get(e.from) ?? -1) && d <= result.nodes.length) {
+				depth.set(e.from, d);
+				moved = true;
+			}
+		}
+		if (!moved) break;
+	}
+	const moves = new Map();
+	for (const e of result.edges) {
+		const from = byKey.get(e.from);
+		const to = byKey.get(e.to);
+		const dest = to.kind === 'recipe' ? hubAt(to.recipe.loc) : main;
+		let src = null;
+		if (from.kind === 'storage') src = carried(from.storageId) ? null : from.storageId;
+		else if (from.kind === 'recipe' && fLoc && from.recipe.loc === fLoc) src = 'faction';
+		// Steps away from the faction spot drop their products straight into
+		// the storage the next step uses, as part of their own run.
+		if (!src || src === dest) {
+			link(e.from, e.to, e.id, e.n);
+			continue;
+		}
+		const key = `transfer:${src}>${dest}#${Math.max(0, depth.get(e.to))}`;
+		let t = moves.get(key);
+		if (!t) {
+			t = { key, kind: 'transfer', src, dest, label: 'Move to ' + (STORAGES[dest]?.name || dest), takes: new Map(), crafts: 0, weight: 0, forSteps: new Set() };
+			moves.set(key, t);
+			nodes.push(t);
+		}
+		t.takes.set(e.id, (t.takes.get(e.id) || 0) + e.n);
+		t.crafts += e.n;
+		t.weight += itemWeight(e.id) * e.n;
+		t.forSteps.add(to.recipe ? to.recipe.name : to.label);
+		link(e.from, key, e.id, e.n);
+		link(key, e.to, e.id, e.n);
+	}
+	return { ...result, nodes, edges: [...edges.values()] };
+}
+
+// Runs for a "Move items" step, and what goes in each vehicle on the first run.
+function transferRuns(nd, vehicles) {
+	const total = vehicles.reduce((sum, v) => sum + v.cap, 0);
+	const runs = nd.weight <= 0 ? 1 : total > 0 ? Math.ceil(nd.weight / total) : Infinity;
+	const room = vehicles.map((v) => v.cap);
+	const loads = vehicles.map((_, i) => ({ vehicle: i, items: [] }));
+	const order = [...nd.takes].sort((a, b) => itemWeight(b[0]) - itemWeight(a[0]));
+	for (const [id, amount] of order) {
+		const w = itemWeight(id);
+		let left = amount;
+		for (let i = 0; i < room.length && left > 0; i++) {
+			const fit = w > 0 ? Math.floor(room[i] / w) : left;
+			const put = Math.min(fit, left);
+			if (put > 0) {
+				loads[i].items.push({ id, n: put });
+				room[i] -= put * w;
+				left -= put;
+			}
+		}
+	}
+	return { runs, loads };
+}
+
 // --- Loading ---
 // vehicles: [{ id, name, cap }] with multipliers already applied.
 // Returns { perRun, loads(crafts) -> [{ vehicleIndex, items: [{id, n}] }] }.
@@ -2256,6 +2402,11 @@ function planTotals(result, vehicles, optimal) {
 	let revenue = 0;
 	let runs = 0;
 	for (const nd of result.nodes) {
+		if (nd.kind === 'transfer') {
+			const tr = transferRuns(nd, vehicles);
+			if (Number.isFinite(tr.runs)) runs += tr.runs;
+			continue;
+		}
 		if (nd.kind !== 'recipe') continue;
 		const c = nd.recipe.cost * nd.crafts;
 		if (c > 0) cost += c;
@@ -2318,8 +2469,37 @@ function sellableItems(usable) {
 	return best;
 }
 
+// Best value per unit of a leftover item: sell it as-is, or put it through a
+// single-ingredient recipe whose output sells (e.g. scrap gold -> refined gold).
+function leftoverUse(id, usable, sellers = sellableItems(usable)) {
+	let best = { value: 0, how: null };
+	const direct = sellers.get(id);
+	if (direct) best = { value: unitPrice(direct), how: { kind: 'sell', recipe: direct } };
+	for (const r of RECIPES) {
+		if (r.type !== 'recipe' || !usable(r) || r.ins.length !== 1 || r.ins[0].id !== id) continue;
+		let out = 0;
+		for (const o of r.outs) {
+			const s = sellers.get(o.id);
+			if (s) out += o.n * unitPrice(s);
+		}
+		const value = (out - r.cost) / r.ins[0].n;
+		if (value > best.value) best = { value, how: { kind: 'craft', recipe: r, sellers: r.outs.map((o) => sellers.get(o.id)).filter(Boolean) } };
+	}
+	return best;
+}
+
+function leftoverList(surplus, usable) {
+	const sellers = sellableItems(usable);
+	return [...surplus]
+		.map(([id, n]) => {
+			const use = leftoverUse(id, usable, sellers);
+			return { id, n, weight: n * itemWeight(id), value: n * use.value, use };
+		})
+		.sort((a, b) => b.value - a.value || b.n - a.n);
+}
+
 function evaluate(id, n, pool, env) {
-	const res = solve([{ id, n }], pool, { useHM: false, sell: true, prioOf: env.prioOf, usable: env.usable });
+	const res = applyHubs(solve([{ id, n }], pool, { useHM: false, sell: true, prioOf: env.prioOf, usable: env.usable }), env.hubs);
 	const t = planTotals(res, env.vehicles, env.optimal);
 	let bonus = 0;
 	let crafting = false;
@@ -2331,7 +2511,18 @@ function evaluate(id, n, pool, env) {
 		if (!nd.recipe.ins.length) pickups = true;
 	}
 	const missing = res.nodes.some((nd) => nd.kind === 'missing');
-	return { id, n, res, runs: t.runs, cost: t.cost, revenue: t.revenue + bonus, profit: t.revenue + bonus - t.cost, crafting, pickups, missing };
+	// Leftovers pile up across batches, so their selling trips are counted in
+	// full loads: one trip per load to sell, two if they're refined first.
+	const totalCap = env.vehicles.reduce((sum, v) => sum + v.cap, 0) || 1;
+	let leftover = 0;
+	let leftoverRuns = 0;
+	for (const x of leftoverList(res.surplus, env.usable)) {
+		if (x.value <= 0) continue;
+		leftover += x.value;
+		leftoverRuns += (x.weight / totalCap) * (x.use.how.kind === 'craft' ? 2 : 1);
+	}
+	const effRuns = t.runs + leftoverRuns;
+	return { id, n, res, runs: t.runs, leftoverRuns, effRuns, cost: t.cost, revenue: t.revenue + bonus, leftover, profit: t.revenue + bonus + leftover - t.cost, crafting, pickups, missing };
 }
 
 // Largest n for which test(evaluate(n)) holds, assuming it holds up to some point.
@@ -2417,7 +2608,7 @@ function grindIdeas(pool, env, runBudget = 20) {
 	const out = [];
 	for (const id of sellableItems(env.usable).keys()) {
 		const e = largest(id, pool, env, (x) => !x.missing && x.runs <= runBudget, 50000);
-		if (e && e.runs > 0 && e.profit > 0) out.push({ ...e, perRun: e.profit / e.runs });
+		if (e && e.runs > 0 && e.profit > 0) out.push({ ...e, perRun: e.profit / e.effRuns });
 	}
 	return out.sort((a, b) => b.perRun - a.perRun);
 }
@@ -2469,6 +2660,9 @@ const DEFAULTS = {
 	autoTrunk: false,
 	takeItem: '',
 	truckerOnly: true,
+	hubsOn: true,
+	factionLoc: '',
+	mainStorage: 'biz_train',
 };
 
 const S = {
@@ -2693,6 +2887,10 @@ async function refreshFromApi() {
 }
 
 // ---------- Planning ----------
+function hubConfig() {
+	return { enabled: !!S.settings.hubsOn, factionLoc: S.settings.factionLoc || null, mainStorage: S.settings.mainStorage || 'biz_train' };
+}
+
 function activeVehicles() {
 	const s = S.settings;
 	const trunkMult = 1 + (s.premium ? 0.15 : 0) + (s.milk ? 0.2 : 0) + (s.perk === 'postop' ? 0.15 : 0);
@@ -2719,26 +2917,26 @@ function replan() {
 				.map((s) => ({ id: s.id, name: s.name, prio: storagePrio(s), items: s.items }))
 		: [];
 	S.result = S.targets.length
-		? solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] })
+		? applyHubs(solve(S.targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] }), hubConfig())
 		: { nodes: [], edges: [], surplus: new Map() };
 
 	S.cols = S.result.nodes.length ? layoutColumns(S.result) : [];
 	const prevOrder = S.order;
 	S.order = [];
-	for (const col of S.cols) for (const n of col) if (n.kind === 'recipe') S.order.push(n.key);
+	for (const col of S.cols) for (const n of col) if (n.kind === 'recipe' || n.kind === 'transfer') S.order.push(n.key);
 	updateBaseline();
 
 	// A pinned step that has dropped out of the plan is genuinely finished:
 	// its products are now in storage. Move on to the next step.
 	if (S.pinned && !S.result.nodes.some((n) => n.key === S.pinned)) {
 		const finished = S.pinned;
-		const wasRecipe = finished.startsWith('recipe:');
+		const wasRecipe = finished.startsWith('recipe:') || finished.startsWith('transfer:');
 		const after = prevOrder.slice(prevOrder.indexOf(finished) + 1).find((k) => S.order.includes(k));
 		const next = after || S.order[0] || null;
 		setPinned(next);
 		if (wasRecipe) {
-			const name = finished.split('::').pop();
-			notify(next ? `${name} finished. Next: ${pinnedNode().recipe.name}` : `${name} finished. All steps done.`);
+			const name = finished.startsWith('transfer:') ? 'Move to ' + (STORAGES[finished.split('>')[1].split('#')[0]]?.name || 'storage') : finished.split('::').pop();
+			notify(next ? `${name} finished. Next: ${stepTitle(pinnedNode())}` : `${name} finished. All steps done.`);
 			log(`${name} finished.`);
 		}
 	}
@@ -2747,6 +2945,7 @@ function replan() {
 	$('#statRuns').textContent = fmt(totals.runs);
 	$('#statCost').textContent = money(totals.cost);
 	$('#statRevenue').textContent = money(totals.revenue);
+	renderLeftovers();
 
 	renderCapacity();
 	S.graphDirty = true;
@@ -2762,6 +2961,42 @@ function renderCapacity() {
 	const gameMax = Number(S.game.max_weight);
 	if (S.settings.useInventory && gameMax > 0) text += ` The game reports your inventory as ${fmt(gameMax)} kg right now.`;
 	box.textContent = text;
+}
+
+// Byproducts the plan makes but doesn't use, and their best use.
+function renderLeftovers() {
+	const box = $('#leftovers');
+	const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
+	const list = S.result ? leftoverList(S.result.surplus, usable) : [];
+	const total = list.reduce((sum, x) => sum + x.value, 0);
+	$('#statLeftovers').textContent = money(total);
+	$('#leftoverSection').hidden = !list.length;
+	box.textContent = '';
+	// Rounding remainders (a few spare items) are summed into one line.
+	const major = list.filter((x, i) => x.value >= 50000 || (i < 2 && x.value > 0));
+	const minor = list.filter((x) => !major.includes(x));
+	for (const x of major) {
+		let how = 'no buyer';
+		if (x.use.how?.kind === 'sell') how = `sell at ${locShort(x.use.how.recipe.loc)}`;
+		if (x.use.how?.kind === 'craft') {
+			const r = x.use.how.recipe;
+			const into = r.outs.map((o) => itemName(o.id)).join(' + ');
+			const at = x.use.how.sellers[0] ? ', sell at ' + locShort(x.use.how.sellers[0].loc) : '';
+			how = `${r.name} at ${locShort(r.loc)} into ${into}${at}`;
+		}
+		box.append(
+			h(
+				'div',
+				{ class: 'leftover' },
+				h('div', { class: 'leftover-top' }, h('b', { text: `${fmt(x.n)} ${itemName(x.id)}` }), h('span', { class: x.value > 0 ? 'money-in' : 'hint', text: x.value > 0 ? money(x.value) : '—' })),
+				h('small', { text: `${fmt(x.weight)} kg, ${how}` })
+			)
+		);
+	}
+	if (minor.length) {
+		const v = minor.reduce((sum, x) => sum + x.value, 0);
+		box.append(h('div', { class: 'leftover' }, h('div', { class: 'leftover-top' }, h('span', { class: 'hint', text: `${minor.length} small remainders: ${minor.map((x) => `${fmt(x.n)} ${itemName(x.id)}`).join(', ')}` }), h('span', { class: 'hint', text: money(v) }))));
+	}
 }
 
 // ---------- Route graph ----------
@@ -2799,6 +3034,13 @@ function layoutColumns(result) {
 	return cols.filter(Boolean).reverse();
 }
 
+function stepTitle(n) {
+	if (!n) return '';
+	if (n.kind === 'recipe') return n.recipe.name;
+	if (n.kind === 'transfer') return `Move ${STORAGES[n.src]?.name || n.src} → ${STORAGES[n.dest]?.name || n.dest}`;
+	return n.label;
+}
+
 // Vehicles in display order: trailer / cab / inventory.
 function displayOrder() {
 	const rank = (v) => (v.id === 'inventory' ? 2 : v.cab ? 1 : 0);
@@ -2816,6 +3058,24 @@ function splitText(loads, id, field) {
 function cardFor(n) {
 	const classes = ['card', n.kind];
 	if (n.key === S.pinned) classes.push('pinned');
+
+	if (n.kind === 'transfer') {
+		const card = h('div', { class: classes.join(' '), 'data-key': n.key });
+		const tr = transferRuns(n, S.vehicles);
+		card.append(
+			h(
+				'div',
+				{ class: 'head' },
+				h('span', { class: 'step', text: String(stepNumber(n.key)) }),
+				h('div', { class: 'titles' }, h('div', { class: 'where', text: `${STORAGES[n.src]?.name || n.src} → ${STORAGES[n.dest]?.name || n.dest}` }), h('div', { class: 'what', text: 'Move items' })),
+				h('span', { class: 'plate', text: Number.isFinite(tr.runs) ? `${tr.runs}×` : '!', title: `${tr.runs} run${tr.runs === 1 ? '' : 's'}, ${fmt(n.weight)} kg` })
+			),
+			h('ul', {}, [...n.takes].map(([id, k]) => h('li', {}, h('span', { text: itemName(id) }), h('span', { text: fmt(k) + 'x' }))))
+		);
+		const planned = S.baseline?.steps[n.key] || 0;
+		if (planned > n.crafts) card.append(h('div', { class: 'progress', title: `${fmt(planned - n.crafts)} of ${fmt(planned)} already moved` }, h('span', { style: `width:${Math.round(((planned - n.crafts) / planned) * 100)}%` })));
+		return card;
+	}
 
 	// Storage and "get it yourself" boxes are slim chips, not steps.
 	if (n.kind !== 'recipe') {
@@ -2899,7 +3159,7 @@ function updateBaseline() {
 	const key = targetsKey();
 	if (!S.baseline || S.baseline.key !== key) S.baseline = { key, steps: {} };
 	for (const n of S.result.nodes) {
-		if (n.kind !== 'recipe') continue;
+		if (n.kind !== 'recipe' && n.kind !== 'transfer') continue;
 		S.baseline.steps[n.key] = Math.max(S.baseline.steps[n.key] || 0, n.crafts);
 	}
 	store.set('baseline', S.baseline);
@@ -2938,7 +3198,7 @@ function drawEdges() {
 		const b = rect(e.to);
 		if (!a || !b) continue;
 		const from = S.result.nodes.find((n) => n.key === e.from);
-		const color = from?.recipe?.color || (from?.kind === 'storage' ? '#49a86f' : from?.kind === 'missing' ? '#e0584f' : '#98a2a8');
+		const color = from?.recipe?.color || (from?.kind === 'storage' ? '#49a86f' : from?.kind === 'missing' ? '#e0584f' : from?.kind === 'transfer' ? '#7aa2d6' : '#98a2a8');
 		const x1 = a.x + a.w;
 		const y1 = a.y + Math.min(a.h / 2, 34);
 		const x2 = b.x;
@@ -3161,6 +3421,7 @@ function renderPin() {
 	box.classList.toggle('collapsed', collapsed);
 	const idx = S.order.indexOf(n.key);
 	const isRecipe = n.kind === 'recipe';
+	const isMove = n.kind === 'transfer';
 	const r = isRecipe ? n.recipe : null;
 	const info = isRecipe ? nodeRuns(n, S.vehicles, S.settings.optimal) : null;
 	if (r) box.style.setProperty('--stripe', r.color);
@@ -3171,12 +3432,12 @@ function renderPin() {
 		h(
 			'div',
 			{ class: 'pin-head' },
-			isRecipe ? h('span', { class: 'step', text: String(stepNumber(n.key)) }) : null,
+			isRecipe || isMove ? h('span', { class: 'step', text: String(stepNumber(n.key)) }) : null,
 			h(
 				'div',
 				{ class: 'pin-titles' },
-				h('div', { class: 'where', text: isRecipe ? locShort(r.loc) : n.kind === 'storage' ? 'Storage' : n.kind === 'missing' ? 'Get it yourself' : 'Keep' }),
-				h('div', { class: 'pin-name', text: isRecipe ? r.name : n.label })
+				h('div', { class: 'where', text: isRecipe ? locShort(r.loc) : isMove ? `${STORAGES[n.src]?.name || n.src} → ${STORAGES[n.dest]?.name || n.dest}` : n.kind === 'storage' ? 'Storage' : n.kind === 'missing' ? 'Get it yourself' : 'Keep' }),
+				h('div', { class: 'pin-name', text: isRecipe ? r.name : isMove ? 'Move items' : n.label })
 			),
 			iconBtn('‹', 'Previous step', () => stepPin(-1), idx <= 0),
 			iconBtn('›', 'Next step', () => stepPin(1), idx === -1 || idx >= S.order.length - 1),
@@ -3192,7 +3453,44 @@ function renderPin() {
 		const runsText = Number.isFinite(info.runs) ? `${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : 'too heavy for your vehicles';
 		box.append(h('div', { class: 'pin-summary', text: `${fmt(n.crafts)} crafts left, ${runsText}` + (info.runs > 1 ? `, ${fmt(info.runCrafts)} this run` : '') }));
 	}
+	if (isMove) {
+		const tr = transferRuns(n, S.vehicles);
+		box.append(h('div', { class: 'pin-summary', text: `${fmt(n.weight)} kg left to move, ${fmt(tr.runs)} run${tr.runs === 1 ? '' : 's'}. For ${[...n.forSteps].join(', ')}.` }));
+	}
 	if (collapsed) return;
+
+	if (isMove) {
+		const tr = transferRuns(n, S.vehicles);
+		const order = displayOrder().map(({ v }) => (v.id === 'inventory' ? 'Inv' : v.cab ? 'MK15' : v.name));
+		box.append(
+			h(
+				'table',
+				{ class: 'pin-table' },
+				h('thead', {}, h('tr', {}, h('th', { text: 'Move' }), h('th', { text: order.join('/'), title: 'This run, split across your vehicles' }), h('th', { text: 'Left' }))),
+				h('tbody', {}, [...n.takes].map(([id, k]) => h('tr', {}, h('td', { text: itemName(id) }), h('td', { text: splitText(tr.loads, id, 'items') }), h('td', { text: fmt(k) }))))
+			)
+		);
+		box.append(carryingNow(new Set(n.takes.keys())));
+		const src = STORAGES[n.src]?.name || n.src;
+		const dest = STORAGES[n.dest]?.name || n.dest;
+		if (!S.settings.automation) {
+			box.append(h('div', { class: 'path', text: `Take these from ${src}, drive to ${dest} and put them in.` }));
+			box.append(h('div', { class: 'pin-actions' }, h('button', { class: 'btn small', text: 'Turn on automation', onclick: () => setSetting('automation', true) })));
+		} else {
+			box.append(
+				h(
+					'div',
+					{ class: 'pin-actions' },
+					h('button', { class: 'btn small primary', text: 'Load this run', title: `At ${src} with its menu open`, disabled: !!S.busy, onclick: loadPinned }),
+					h('button', { class: 'btn small', text: 'Empty trunks', title: `At ${dest} with its menu open`, disabled: !!S.busy, onclick: dumpTrunks })
+				)
+			);
+			box.append(h('div', { class: 'path', text: `Load at ${src}, then empty trunks at ${dest}.` }));
+		}
+		if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
+		box.append(detailsBlock(n));
+		return;
+	}
 
 	if (!isRecipe) {
 		box.append(h('div', { class: 'pin-chipitems', text: [...n.takes].map(([id, k]) => `${itemName(id)} ${fmt(k)}x`).join(', ') }));
@@ -3416,14 +3714,14 @@ function loadedTrunks() {
 function loadPinned() {
 	if (!S.settings.automation) return log('Turn on automation to load trunks.', 'warn');
 	const n = pinnedNode();
-	if (!n || n.kind !== 'recipe') return notify('Pin a recipe first.');
-	const info = nodeRuns(n, S.vehicles, S.settings.optimal);
+	if (!n || (n.kind !== 'recipe' && n.kind !== 'transfer')) return notify('Pin a step first.');
+	const info = n.kind === 'transfer' ? transferRuns(n, S.vehicles) : nodeRuns(n, S.vehicles, S.settings.optimal);
 	const actions = S.settings.dumpFirst ? loadedTrunks().map(dumpAction) : [];
 	for (const load of info.loads) {
 		const v = S.vehicles[load.vehicle];
 		for (const x of load.items) actions.push(takeAction(v, x.id, x.n));
 	}
-	runActions('Load ' + n.recipe.name, actions);
+	runActions('Load ' + stepTitle(n), actions);
 }
 
 function dumpTrunks() {
@@ -3561,6 +3859,11 @@ function bindSettings() {
 	for (const v of Object.values(VEHICLES).filter((v) => !v.cab).sort((a, b) => a.cap - b.cap)) {
 		trailer.append(h('option', { value: v.id, text: `${v.name} (${fmt(v.cap)} kg)` }));
 	}
+	const floc = $('#factionLoc');
+	floc.append(h('option', { value: '', text: 'Not at a recipe location' }));
+	for (const loc of [...LOCATIONS].map((l) => l.name).sort((a, b) => locShort(a).localeCompare(locShort(b)))) floc.append(h('option', { value: loc, text: locShort(loc) }));
+	const mainSt = $('#mainStorage');
+	for (const st of Object.values(STORAGES).filter((x) => x.kind === 'storage' && x.id !== 'faction').sort((a, b) => a.name.localeCompare(b.name))) mainSt.append(h('option', { value: st.id, text: st.name }));
 	const take = $('#takeItem');
 	take.append(h('option', { value: '', text: 'Choose…' }));
 	for (const id of Object.keys(ITEMS).sort((a, b) => itemName(a).localeCompare(itemName(b)))) take.append(h('option', { value: id, text: itemName(id) }));
@@ -3711,6 +4014,7 @@ function analysisEnv() {
 		optimal: S.settings.optimal,
 		prioOf: (r) => S.recipePrio[r.key] ?? r.prio,
 		usable: (r) => !r.sd || !!S.sdOwned[r.sd],
+		hubs: hubConfig(),
 	};
 }
 
@@ -3759,8 +4063,10 @@ function renderMakeSell(body) {
 	const asIs = sellAsIs(pool, env);
 	body.textContent = '';
 
-	const perRun = (e) => (e.runs > 0 ? money(e.profit / e.runs) : '—');
-	const tokenNote = (e) => (e.res.nodes.some((nd) => nd.recipe?.bonus) ? ' (includes Concrete Delivery Tokens at $2M each, paid on the Concrete Delivery job)' : '');
+	const perRun = (e) => (e.runs > 0 ? money(e.profit / (e.effRuns || e.runs)) : '—');
+	const tokenNote = (e) =>
+		(e.res.nodes.some((nd) => nd.recipe?.bonus) ? ' (includes Concrete Delivery Tokens at $2M each, paid on the Concrete Delivery job)' : '') +
+		(e.leftover > 0 ? `. Includes ${money(e.leftover)} of leftovers: ${leftoverList(e.res.surplus, env.usable).filter((x) => x.value > 0).slice(0, 2).map((x) => `${fmt(x.n)} ${itemName(x.id)}`).join(', ')}` : '');
 	const row = (main, sub, figures, action) =>
 		h('div', { class: 'ms-row' }, h('div', { class: 'ms-main' }, h('div', { class: 'ms-title', text: main }), sub ? h('small', { text: sub }) : null), h('div', { class: 'ms-figs' }, figures), action || null);
 	const fig = (label, value, cls) => h('div', { class: 'ms-fig' }, h('small', { text: label }), h('b', { class: cls || '', text: value }));
@@ -3791,7 +4097,7 @@ function renderMakeSell(body) {
 			'section',
 			{ class: 'ms-section' },
 			h('h3', { text: 'What to grind' }),
-			h('p', { class: 'hint', text: 'Best money per run for about 20 runs of work, including pickups. Items your stock already covers get cheaper, so they rank higher. Runs count trips, not driving distance.' }),
+			h('p', { class: 'hint', text: 'Best money per run for about 20 runs of work, including pickups. Profit counts leftover byproducts at their best use, and per run includes the trips to sell them. Items your stock already covers get cheaper, so they rank higher. Runs count trips, not driving distance.' }),
 			grind.length
 				? grind.map((e) => {
 						const uses = stockUsed(e.res);
