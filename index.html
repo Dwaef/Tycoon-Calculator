@@ -1316,6 +1316,21 @@ body.overlay #pin .pin-details {
 	max-width: 170px;
 }
 
+.lo-head {
+	display: flex;
+	justify-content: space-between;
+	margin: 8px 0 2px;
+	font-size: 13.5px;
+}
+
+.lo-head:first-child {
+	margin-top: 0;
+}
+
+#leftovers .hint {
+	margin: 0 0 4px;
+}
+
 		</style>
 	</head>
 	<body>
@@ -1332,7 +1347,7 @@ body.overlay #pin .pin-details {
 					<div><small>Runs</small><b id="statRuns">0</b></div>
 					<div><small>Spend</small><b class="spend" id="statCost">$0</b></div>
 					<div><small>Earn</small><b class="earn" id="statRevenue">$0</b></div>
-					<div title="Byproducts the plan makes but doesn't use, at their best sale value"><small>Leftovers</small><b class="earn" id="statLeftovers">$0</b></div>
+					<div title="Byproducts this plan makes, plus spare stock it doesn't use, at their best sale value"><small>Leftovers</small><b class="earn" id="statLeftovers">$0</b></div>
 				</div>
 			</header>
 
@@ -1349,7 +1364,6 @@ body.overlay #pin .pin-details {
 				<details open id="leftoverSection" hidden>
 					<summary>Leftovers</summary>
 					<div class="section">
-						<p class="hint">Byproducts this plan makes but doesn't use. They stay in your trunks after the step that makes them, so store them or sell them.</p>
 						<div id="leftovers"></div>
 					</div>
 				</details>
@@ -2807,7 +2821,10 @@ function onGameData(data) {
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
-	else if (storagesChanged || 'weight' in data || 'max_weight' in data) renderPin();
+	else if (storagesChanged || 'weight' in data || 'max_weight' in data) {
+		renderPin();
+		if (storagesChanged) renderLeftovers();
+	}
 }
 
 // Over gameplay, only show the pinned card while on the trucker job.
@@ -2963,39 +2980,66 @@ function renderCapacity() {
 	box.textContent = text;
 }
 
-// Byproducts the plan makes but doesn't use, and their best use.
-function renderLeftovers() {
-	const box = $('#leftovers');
-	const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
-	const list = S.result ? leftoverList(S.result.surplus, usable) : [];
-	const total = list.reduce((sum, x) => sum + x.value, 0);
-	$('#statLeftovers').textContent = money(total);
-	$('#leftoverSection').hidden = !list.length;
-	box.textContent = '';
+// Byproducts the plan makes but doesn't use, plus sellable stock you already
+// have that the plan leaves untouched.
+function spareStock(usable) {
+	const have = new Map();
+	for (const st of S.storages.values()) {
+		if (st.kind === 'backpack' || storagePrio(st) < 0) continue;
+		for (const [id, k] of st.items) if (k > 0) have.set(id, (have.get(id) || 0) + k);
+	}
+	if (S.result) for (const nd of S.result.nodes) if (nd.kind === 'storage') for (const [id, k] of nd.takes) have.set(id, (have.get(id) || 0) - k);
+	return leftoverList(new Map([...have].filter(([, k]) => k > 0)), usable).filter((x) => x.value > 0);
+}
+
+function leftoverRow(x) {
+	let how = 'no buyer';
+	if (x.use.how?.kind === 'sell') how = `sell at ${locShort(x.use.how.recipe.loc)}`;
+	if (x.use.how?.kind === 'craft') {
+		const r = x.use.how.recipe;
+		const into = r.outs.map((o) => itemName(o.id)).join(' + ');
+		const at = x.use.how.sellers[0] ? ', sell at ' + locShort(x.use.how.sellers[0].loc) : '';
+		how = `${r.name} at ${locShort(r.loc)} into ${into}${at}`;
+	}
+	return h(
+		'div',
+		{ class: 'leftover' },
+		h('div', { class: 'leftover-top' }, h('b', { text: `${fmt(x.n)} ${itemName(x.id)}` }), h('span', { class: x.value > 0 ? 'money-in' : 'hint', text: x.value > 0 ? money(x.value) : '—' })),
+		h('small', { text: `${fmt(x.weight)} kg, ${how}` })
+	);
+}
+
+function leftoverRows(list) {
 	// Rounding remainders (a few spare items) are summed into one line.
 	const major = list.filter((x, i) => x.value >= 50000 || (i < 2 && x.value > 0));
 	const minor = list.filter((x) => !major.includes(x));
-	for (const x of major) {
-		let how = 'no buyer';
-		if (x.use.how?.kind === 'sell') how = `sell at ${locShort(x.use.how.recipe.loc)}`;
-		if (x.use.how?.kind === 'craft') {
-			const r = x.use.how.recipe;
-			const into = r.outs.map((o) => itemName(o.id)).join(' + ');
-			const at = x.use.how.sellers[0] ? ', sell at ' + locShort(x.use.how.sellers[0].loc) : '';
-			how = `${r.name} at ${locShort(r.loc)} into ${into}${at}`;
-		}
-		box.append(
-			h(
-				'div',
-				{ class: 'leftover' },
-				h('div', { class: 'leftover-top' }, h('b', { text: `${fmt(x.n)} ${itemName(x.id)}` }), h('span', { class: x.value > 0 ? 'money-in' : 'hint', text: x.value > 0 ? money(x.value) : '—' })),
-				h('small', { text: `${fmt(x.weight)} kg, ${how}` })
-			)
-		);
-	}
+	const rows = major.map(leftoverRow);
 	if (minor.length) {
 		const v = minor.reduce((sum, x) => sum + x.value, 0);
-		box.append(h('div', { class: 'leftover' }, h('div', { class: 'leftover-top' }, h('span', { class: 'hint', text: `${minor.length} small remainders: ${minor.map((x) => `${fmt(x.n)} ${itemName(x.id)}`).join(', ')}` }), h('span', { class: 'hint', text: money(v) }))));
+		rows.push(h('div', { class: 'leftover' }, h('div', { class: 'leftover-top' }, h('span', { class: 'hint', text: `${minor.length} small amounts: ${minor.map((x) => `${fmt(x.n)} ${itemName(x.id)}`).join(', ')}` }), h('span', { class: 'hint', text: money(v) }))));
+	}
+	return rows;
+}
+
+function renderLeftovers() {
+	const box = $('#leftovers');
+	const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
+	const made = S.result ? leftoverList(S.result.surplus, usable) : [];
+	const spare = spareStock(usable);
+	const madeTotal = made.reduce((sum, x) => sum + x.value, 0);
+	const spareTotal = spare.reduce((sum, x) => sum + x.value, 0);
+	$('#statLeftovers').textContent = money(madeTotal + spareTotal);
+	$('#leftoverSection').hidden = !made.length && !spare.length;
+	box.textContent = '';
+	if (made.length) {
+		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'Made by this plan' }), h('span', { class: 'money-in', text: money(madeTotal) })));
+		box.append(h('p', { class: 'hint', text: 'Byproducts this plan makes but doesn’t use. They stay in your trunks after the step that makes them.' }));
+		box.append(...leftoverRows(made));
+	}
+	if (spare.length) {
+		box.append(h('h4', { class: 'lo-head' }, h('span', { text: 'Spare stock in your storages' }), h('span', { class: 'money-in', text: money(spareTotal) })));
+		box.append(h('p', { class: 'hint', text: 'Things you already have that this plan doesn’t use, such as byproducts from earlier runs.' }));
+		box.append(...leftoverRows(spare));
 	}
 }
 
