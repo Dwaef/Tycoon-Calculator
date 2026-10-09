@@ -1342,7 +1342,65 @@ body.overlay #pin .pin-details {
 	font-weight: 700;
 }
 
-		</style>
+		
+/* ---------- Use my items ---------- */
+.use-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 14px;
+	align-items: center;
+	padding: 10px 12px;
+	margin-bottom: 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-control);
+	background: var(--asphalt);
+}
+
+.use-form > label:not(.toggle) {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	color: var(--muted);
+}
+
+.use-form select {
+	max-width: 240px;
+}
+
+.use-form input[type='number'] {
+	width: 110px;
+}
+
+.use-cards {
+	margin-top: 4px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+	font-size: 12px;
+}
+
+.sd-chip {
+	padding: 1px 7px;
+	border: 1px solid var(--amber);
+	border-radius: 10px;
+	color: var(--amber);
+	font-size: 11.5px;
+}
+
+.use-base {
+	padding: 8px 10px;
+	margin-bottom: 8px;
+	border-left: 3px solid var(--muted);
+	background: rgba(255, 255, 255, 0.03);
+	font-size: 13px;
+}
+
+.sd-chip.owned {
+	border-color: var(--go);
+	color: var(--go);
+}
+</style>
 	</head>
 	<body>
 		<div id="app">
@@ -1352,6 +1410,7 @@ body.overlay #pin .pin-details {
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
+				<button class="btn" id="openUseItems">Use my items</button>
 				<button class="btn primary" id="refresh" title="Reads all your storages from the TT API (4 requests)">Refresh storages</button>
 				<div class="stats">
 					<div><small>Steps done</small><b id="statSteps">0</b></div>
@@ -1476,6 +1535,25 @@ body.overlay #pin .pin-details {
 					<button class="btn" data-close>Close</button>
 				</header>
 				<div class="body" id="storageList"></div>
+			</div>
+		</div>
+
+		<div class="modal" id="useItemsModal" hidden>
+			<div class="sheet wide">
+				<header>
+					<h2>Use my items</h2>
+					<button class="btn" data-close>Close</button>
+				</header>
+				<div class="body">
+					<div class="use-form">
+						<label>Item <select id="useItem"></select></label>
+						<label>Amount <input type="number" id="useAmount" min="1" /></label>
+						<span class="hint" id="useHave"></span>
+						<label class="toggle"><input type="checkbox" id="useStockOnly" /><span>Only use what I already have (no pickups)</span></label>
+						<button class="btn primary" id="useGo">Work it out</button>
+					</div>
+					<div id="useResults"></div>
+				</div>
 			</div>
 		</div>
 
@@ -2638,6 +2716,92 @@ function grindIdeas(pool, env, runBudget = 20) {
 	return out.sort((a, b) => b.perRun - a.perRun);
 }
 
+
+
+// --- Use my items ---
+// Everything an item can end up as: sellable products reachable by crafting
+// it (directly or through a chain), plus selling it as it is.
+function productsUsing(itemId, usable) {
+	const sellers = sellableItems(usable);
+	const seen = new Set([itemId]);
+	const queue = [itemId];
+	while (queue.length) {
+		const cur = queue.shift();
+		for (const r of RECIPES) {
+			if (r.type === 'export' || !usable(r) || !r.ins.some((x) => x.id === cur)) continue;
+			for (const o of r.outs)
+				if (!seen.has(o.id)) {
+					seen.add(o.id);
+					queue.push(o.id);
+				}
+		}
+	}
+	return [...seen].filter((id) => sellers.has(id));
+}
+
+// Items that can feed into at least one sellable product.
+function usableInputs(usable) {
+	const ids = new Set();
+	for (const r of RECIPES) if (usable(r)) r.ins.forEach((x) => ids.add(x.id));
+	return [...ids].filter((id) => productsUsing(id, usable).length).sort((a, b) => itemName(a).localeCompare(itemName(b)));
+}
+
+// The chosen amount sits in its own storage at top priority; the rest of the
+// pool keeps everything else you own.
+function inputPool(pool, itemId, amount) {
+	return [
+		{ id: '__input', name: 'Your ' + itemName(itemId), prio: 1e6, items: new Map([[itemId, amount]]) },
+		...pool.map((s) => ({ ...s, items: new Map([...s.items].filter(([id]) => id !== itemId)) })),
+	];
+}
+
+function inputUsed(e) {
+	let n = 0;
+	for (const nd of e.res.nodes) if (nd.kind === 'storage' && nd.storageId === '__input') for (const k of nd.takes.values()) n += k;
+	return n;
+}
+
+// The most of `product` the given amount of `itemId` supports.
+function useOfItem(itemId, amount, product, pool, env, stockOnly) {
+	const p2 = inputPool(pool, itemId, amount);
+	// Never make more of the chosen item: it is the limit.
+	const envP = { ...env, usable: (r) => env.usable(r) && (r.type === 'export' || !r.outs.some((o) => o.id === itemId)) };
+	const test = (e) => !e.missing && inputUsed(e) > 0 && (!stockOnly || !e.pickups);
+	const e = largest(product, p2, envP, test, 500000);
+	return e ? { ...e, perRun: e.effRuns > 0 ? e.profit / e.effRuns : e.profit, used: inputUsed(e) } : null;
+}
+
+// Best SD cards for one use: start with none, add any card that raises money
+// per run while still using your item, repeat until nothing helps.
+function bestCardsForUse(itemId, amount, product, pool, env, stockOnly) {
+	const cardsOf = new Map();
+	for (const r of RECIPES) if (r.sd) (cardsOf.get(r.sd) || cardsOf.set(r.sd, []).get(r.sd)).push(r);
+	const envFor = (on) => ({ ...env, usable: (r) => (!r.sd || on.has(r.sd)) && (env.extraUsable ? env.extraUsable(r) : true), prioOf: (r) => (r.sd && on.has(r.sd) ? 10 : env.prioOf(r)) });
+	const base = useOfItem(itemId, amount, product, pool, envFor(new Set()), stockOnly);
+	let best = base;
+	const on = new Set();
+	const touched = (e) => {
+		const ids = new Set([product, itemId]);
+		if (e) for (const ed of e.res.edges) ids.add(ed.id);
+		return ids;
+	};
+	for (let round = 0; round < 4; round++) {
+		const ids = touched(best);
+		let pick = null;
+		for (const [card, recipes] of cardsOf) {
+			if (on.has(card)) continue;
+			// Only cards that make or use something on this route can matter.
+			if (!recipes.some((r) => r.outs.some((o) => ids.has(o.id)) || r.ins.some((x) => ids.has(x.id)) || (r.exp && ids.has(r.exp.id)))) continue;
+			const trial = new Set(on).add(card);
+			const e = useOfItem(itemId, amount, product, pool, envFor(trial), stockOnly);
+			if (e && (!best || e.perRun > best.perRun * 1.005) && (!pick || e.perRun > pick.e.perRun)) pick = { card, e };
+		}
+		if (!pick) break;
+		on.add(pick.card);
+		best = pick.e;
+	}
+	return { base, best, cards: [...on] };
+}
 
 // ===== App =====
 
@@ -4152,6 +4316,150 @@ function renderRecipes() {
 	}
 }
 
+// ---------- Use my items ----------
+function haveOf(id) {
+	let n = 0;
+	for (const st of S.storages.values()) if (st.kind !== 'backpack' && storagePrio(st) >= 0) n += st.items.get(id) || 0;
+	return n;
+}
+
+function openUseItems() {
+	const sel = $('#useItem');
+	if (!sel.options.length) {
+		const all = (r) => r.loc !== 'Mineshaft';
+		const ids = usableInputs(all);
+		// Items you have come first.
+		const owned = ids.filter((id) => haveOf(id) > 0).sort((a, b) => haveOf(b) * itemWeight(b) - haveOf(a) * itemWeight(a));
+		const rest = ids.filter((id) => !owned.includes(id));
+		if (owned.length) sel.append(h('optgroup', { label: 'In your storages' }, owned.map((id) => h('option', { value: id, text: `${itemName(id)} (${fmt(haveOf(id))})` }))));
+		sel.append(h('optgroup', { label: 'Everything else' }, rest.map((id) => h('option', { value: id, text: itemName(id) }))));
+		const last = store.get('useItem', null);
+		if (last && ids.includes(last)) sel.value = last;
+		sel.onchange = () => {
+			store.set('useItem', sel.value);
+			syncUseAmount(true);
+		};
+		$('#useGo').onclick = runUseItems;
+		$('#useStockOnly').checked = !!store.get('useStockOnly', false);
+		$('#useStockOnly').onchange = (e) => store.set('useStockOnly', e.target.checked);
+	}
+	syncUseAmount(false);
+	openModal('#useItemsModal');
+}
+
+function syncUseAmount(force) {
+	const id = $('#useItem').value;
+	const have = haveOf(id);
+	$('#useHave').textContent = have ? `You have ${fmt(have)}` : 'None in your storages';
+	if (force || !$('#useAmount').value) $('#useAmount').value = String(have || 1000);
+}
+
+function runUseItems() {
+	const box = $('#useResults');
+	const id = $('#useItem').value;
+	const amount = Math.max(1, parseInt($('#useAmount').value, 10) || 0);
+	const stockOnly = $('#useStockOnly').checked;
+	box.textContent = '';
+	box.append(h('p', { class: 'hint', text: 'Working it out…' }));
+	setTimeout(() => {
+		box.textContent = '';
+		try {
+			const pool = analysisPool();
+			const base = analysisEnv();
+			const env = { ...base, extraUsable: (r) => r.loc !== 'Mineshaft' };
+			const rows = [];
+			for (const product of productsUsing(id, (r) => r.loc !== 'Mineshaft')) {
+				const r = bestCardsForUse(id, amount, product, pool, env, stockOnly);
+				if (r.best) rows.push({ product, ...r });
+			}
+			rows.sort((a, b) => b.best.perRun - a.best.perRun);
+			renderUseResults(box, id, amount, stockOnly, rows);
+		} catch (e) {
+			box.append(h('p', { class: 'hint', text: 'Something went wrong: ' + e.message }));
+			log('Use my items: ' + e.message, 'error');
+		}
+	}, 30);
+}
+
+// What a route also needs besides your item, in plain words.
+function alsoNeeds(e, id) {
+	const pickups = e.res.nodes.filter((nd) => nd.kind === 'recipe' && !nd.recipe.ins.length).map((nd) => `${fmt(nd.crafts * nd.recipe.outs[0].n)} ${itemName(nd.recipe.outs[0].id)}`);
+	const stock = new Map();
+	for (const nd of e.res.nodes) if (nd.kind === 'storage' && nd.storageId !== '__input') for (const [k, n] of nd.takes) if (k !== id) stock.set(k, (stock.get(k) || 0) + n);
+	const parts = [];
+	if (stock.size) parts.push('from your storages: ' + [...stock].sort((a, b) => b[1] * itemWeight(b[0]) - a[1] * itemWeight(a[0])).slice(0, 3).map(([k, n]) => `${fmt(n)} ${itemName(k)}`).join(', '));
+	if (pickups.length) parts.push('picks up ' + pickups.slice(0, 4).join(', ') + (pickups.length > 4 ? '…' : ''));
+	return parts.join('; ');
+}
+
+function renderUseResults(box, id, amount, stockOnly, rows) {
+	const name = itemName(id);
+	// What your item is worth if you just sell it (or refine and sell it).
+	const unit = leftoverUse(id, (r) => !r.sd || !!S.sdOwned[r.sd]).value;
+	const asIs = rows.find((r) => r.product === id);
+	const crafted = rows
+		.filter((r) => r.product !== id)
+		.map((r) => {
+			const gain = r.best.profit - unit * r.best.used;
+			return { ...r, gain, gainPerRun: r.best.effRuns > 0 ? gain / r.best.effRuns : gain };
+		})
+		.sort((a, b) => b.gainPerRun - a.gainPerRun);
+
+	if (asIs || unit > 0) {
+		const v = asIs ? asIs.best : null;
+		box.append(
+			h(
+				'div',
+				{ class: 'use-base' },
+				h('b', { text: 'Just selling them: ' }),
+				h('span', { text: v ? `${money(v.profit)} for ${fmt(v.n)} ${name}, ${fmt(Math.ceil(v.effRuns))} run${Math.ceil(v.effRuns) === 1 ? '' : 's'}.` : `about ${money(unit * amount)} after refining.` }),
+				h('span', { class: 'hint', text: ' The options below show how much more each one makes on top of that.' })
+			)
+		);
+	}
+	if (!crafted.length) {
+		box.append(h('p', { class: 'hint', text: stockOnly ? `Nothing can be crafted from ${fmt(amount)} ${name} with only what you already have. Untick “Only use what I already have” to allow pickups.` : `${name} doesn't go into anything that sells.` }));
+		return;
+	}
+	for (const r of crafted) {
+		const e = r.best;
+		const sub = [];
+		sub.push(e.used < amount ? `Uses ${fmt(e.used)} of your ${fmt(amount)} ${name}` : `Uses all ${fmt(amount)} ${name}`);
+		const needs = alsoNeeds(e, id);
+		if (needs) sub.push('also ' + needs);
+		const baseGain = r.base ? (r.base.profit - unit * r.base.used) / (r.base.effRuns || 1) : null;
+		const cards = r.cards.length
+			? h(
+					'div',
+					{ class: 'use-cards' },
+					h('span', { class: 'hint', text: 'Speed it up with: ' }),
+					r.cards.map((c) => h('span', { class: 'sd-chip' + (S.sdOwned[c] ? ' owned' : ''), title: S.sdOwned[c] ? 'You have this card ticked' : 'Tick it under Recipes if you have it', text: (S.sdOwned[c] ? '✓ ' : '') + c })),
+					h('span', { class: 'hint', text: baseGain != null ? ` (${money(baseGain)}/run without)` : ' (not possible without)' })
+				)
+			: h('div', { class: 'use-cards' }, h('span', { class: 'hint', text: 'No SD card helps this one.' }));
+		box.append(
+			h(
+				'div',
+				{ class: 'ms-row use-row' },
+				h('div', { class: 'ms-main' }, h('div', { class: 'ms-title', text: `${fmt(e.n)} ${itemName(r.product)}` }), h('small', { text: sub.join('; ') }), cards),
+				h(
+					'div',
+					{ class: 'ms-figs' },
+					h('div', { class: 'ms-fig' }, h('small', { text: unit > 0 ? 'Extra vs selling' : 'Profit' }), h('b', { class: r.gain >= 0 ? 'money-in' : 'money-out', text: money(r.gain) })),
+					h('div', { class: 'ms-fig' }, h('small', { text: 'Runs' }), h('b', { text: fmt(Math.ceil(e.effRuns)) })),
+					h('div', { class: 'ms-fig' }, h('small', { text: 'Per run' }), h('b', { class: r.gainPerRun >= 0 ? 'money-in' : 'money-out', text: money(r.gainPerRun) }))
+				),
+				h('button', {
+					class: 'btn',
+					text: 'Plan this',
+					title: r.cards.some((c) => !S.sdOwned[c]) ? 'Plans with the SD cards you have ticked, so the route may differ' : 'Set this as what to make',
+					onclick: () => planTargets([{ id: r.product, n: e.n }]),
+				})
+			)
+		);
+	}
+}
+
 // ---------- Make & Sell ----------
 function analysisPool() {
 	const activeIds = new Set(S.vehicles.map((v) => v.id));
@@ -4330,6 +4638,7 @@ function init() {
 		openModal('#recipesModal');
 	};
 	$('#openMakeSell').onclick = openMakeSell;
+	$('#openUseItems').onclick = openUseItems;
 	$('#storageSearch').oninput = renderStorages;
 	$('#recipeSearch').oninput = renderRecipes;
 	$('#resetPrio').onclick = () => {
