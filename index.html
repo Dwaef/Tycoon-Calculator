@@ -1415,6 +1415,33 @@ body.overlay #pin .pin-details {
 .use-row.picked {
 	box-shadow: inset 3px 0 0 var(--amber);
 }
+
+.goal {
+	display: grid;
+	gap: 6px;
+	margin-top: 6px;
+	padding-top: 8px;
+	border-top: 1px dashed var(--line);
+}
+
+.goal-title {
+	font-weight: 700;
+	font-size: 13px;
+}
+
+.goal input[type='text'] {
+	width: 100px;
+	flex: none;
+}
+
+.goal select {
+	flex: 1;
+	min-width: 0;
+}
+
+#goalResult:empty {
+	display: none;
+}
 </style>
 	</head>
 	<body>
@@ -1442,6 +1469,16 @@ body.overlay #pin .pin-details {
 					<div class="section">
 						<div id="targets"></div>
 						<button class="btn" id="addTarget">Add item</button>
+						<div class="goal">
+							<div class="goal-title">Or aim for a profit</div>
+							<div class="row">
+								<input type="text" id="goalAmount" placeholder="e.g. 1b or 250m" />
+								<select id="goalItem"></select>
+								<button class="btn primary" id="goalGo">Set</button>
+							</div>
+							<label class="toggle"><input type="checkbox" id="goalLeftovers" /><span>Count leftovers towards the goal</span></label>
+							<p class="hint" id="goalResult"></p>
+						</div>
 						<label class="toggle"><input type="checkbox" data-setting="sell" /><span>Sell at the end when possible</span></label>
 					</div>
 				</details>
@@ -2739,6 +2776,38 @@ function grindIdeas(pool, env, runBudget = 20) {
 }
 
 
+
+// --- Profit goal ---
+// Smallest amount of `id` whose sales, minus every crafting cost on the way,
+// reach `goal`. Leftovers only count when asked.
+function netProfit(e, withLeftovers) {
+	return e.revenue - e.cost + (withLeftovers ? e.leftover : 0);
+}
+
+function amountForProfit(id, goal, pool, env, withLeftovers, cap = 5000000) {
+	const ok = (n) => {
+		const e = evaluate(id, n, pool, env);
+		return !e.missing && netProfit(e, withLeftovers) >= goal ? e : null;
+	};
+	let lo = 0;
+	let hi = 1;
+	let found = ok(hi);
+	while (!found) {
+		lo = hi;
+		hi *= 2;
+		if (hi > cap) return null;
+		found = ok(hi);
+	}
+	while (hi - lo > 1) {
+		const mid = Math.floor((lo + hi) / 2);
+		const e = ok(mid);
+		if (e) {
+			hi = mid;
+			found = e;
+		} else lo = mid;
+	}
+	return found;
+}
 
 // --- Use my items ---
 // Everything an item can end up as: sellable products reachable by crafting
@@ -4338,6 +4407,65 @@ function renderRecipes() {
 	}
 }
 
+// ---------- Profit goal ----------
+function parseMoney(text) {
+	const m = String(text).trim().toLowerCase().replace(/[$,\s]/g, '').match(/^(\d+(?:\.\d+)?)(k|m|b)?$/);
+	if (!m) return null;
+	const mult = { k: 1e3, m: 1e6, b: 1e9 }[m[2]] || 1;
+	return Math.round(parseFloat(m[1]) * mult);
+}
+
+function setupGoal() {
+	const sel = $('#goalItem');
+	const usable = (r) => !r.sd || !!S.sdOwned[r.sd];
+	const ids = [...sellableItems(usable).keys()].sort((a, b) => itemName(a).localeCompare(itemName(b)));
+	sel.append(...ids.map((id) => h('option', { value: id, text: itemName(id) })));
+	const saved = store.get('goal', null);
+	sel.value = saved?.id && ids.includes(saved.id) ? saved.id : ids.includes('refined_bronze') ? 'refined_bronze' : ids[0];
+	if (saved?.amount) $('#goalAmount').value = saved.amount;
+	$('#goalLeftovers').checked = !!saved?.leftovers;
+	$('#goalGo').onclick = runGoal;
+	$('#goalAmount').addEventListener('keydown', (e) => e.key === 'Enter' && runGoal());
+}
+
+function runGoal() {
+	const out = $('#goalResult');
+	const goal = parseMoney($('#goalAmount').value);
+	const id = $('#goalItem').value;
+	const withLeftovers = $('#goalLeftovers').checked;
+	if (!goal || goal <= 0) {
+		out.textContent = 'Type an amount, like 1b, 250m or 5000000.';
+		return;
+	}
+	store.set('goal', { id, amount: $('#goalAmount').value, leftovers: withLeftovers });
+	out.textContent = 'Working it out…';
+	setTimeout(() => {
+		try {
+			const e = amountForProfit(id, goal, analysisPool(), analysisEnv(), withLeftovers);
+			if (!e) {
+				out.textContent = `Couldn't reach ${money(goal)} with ${itemName(id)}. It may lose money, or need something nothing makes.`;
+				return;
+			}
+			planTargets([{ id, n: e.n }]);
+			const net = netProfit(e, withLeftovers);
+			const parts = [`Make and sell ${fmt(e.n)} ${itemName(id)}: ${money(e.revenue)} in sales, minus ${money(e.cost)} in costs, leaves ${money(net)}.`];
+			let tokens = 0;
+			let tokenValue = 0;
+			for (const nd of e.res.nodes) if (nd.recipe?.bonus) {
+				tokens += nd.recipe.bonus.n * nd.crafts;
+				tokenValue += nd.recipe.bonus.n * nd.recipe.bonus.value * nd.crafts;
+			}
+			if (tokens) parts.push(`${money(tokenValue)} of that is ${fmt(tokens)} Concrete Delivery Tokens, paid when you deliver them.`);
+			if (!withLeftovers && e.leftover > 0) parts.push(`You'll also have ${money(e.leftover)} of leftovers to sell.`);
+			parts.push(`About ${fmt(e.runs)} runs.`);
+			out.textContent = parts.join(' ');
+		} catch (err) {
+			out.textContent = 'Something went wrong: ' + err.message;
+			log('Profit goal: ' + err.message, 'error');
+		}
+	}, 30);
+}
+
 // ---------- Use my items ----------
 function haveOf(id) {
 	let n = 0;
@@ -4676,6 +4804,7 @@ function init() {
 	};
 	$('#openMakeSell').onclick = openMakeSell;
 	$('#openUseItems').onclick = openUseItems;
+	setupGoal();
 	$('#storageSearch').oninput = renderStorages;
 	$('#recipeSearch').oninput = renderRecipes;
 	$('#resetPrio').onclick = () => {
