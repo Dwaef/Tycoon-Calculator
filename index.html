@@ -1400,6 +1400,21 @@ body.overlay #pin .pin-details {
 	border-color: var(--go);
 	color: var(--go);
 }
+
+.best-pick {
+	margin-left: 8px;
+	padding: 1px 7px;
+	border-radius: 3px;
+	background: var(--amber);
+	color: var(--amber-ink);
+	font-size: 11px;
+	font-weight: 700;
+	vertical-align: 2px;
+}
+
+.use-row.picked {
+	box-shadow: inset 3px 0 0 var(--amber);
+}
 </style>
 	</head>
 	<body>
@@ -1549,6 +1564,13 @@ body.overlay #pin .pin-details {
 						<label>Item <select id="useItem"></select></label>
 						<label>Amount <input type="number" id="useAmount" min="1" /></label>
 						<span class="hint" id="useHave"></span>
+						<label>Runs <select id="useBudget">
+							<option value="0">Use as much as possible</option>
+							<option value="5">Best within 5 runs</option>
+							<option value="10">Best within 10 runs</option>
+							<option value="20">Best within 20 runs</option>
+							<option value="50">Best within 50 runs</option>
+						</select></label>
 						<label class="toggle"><input type="checkbox" id="useStockOnly" /><span>Only use what I already have (no pickups)</span></label>
 						<button class="btn primary" id="useGo">Work it out</button>
 					</div>
@@ -2762,22 +2784,22 @@ function inputUsed(e) {
 }
 
 // The most of `product` the given amount of `itemId` supports.
-function useOfItem(itemId, amount, product, pool, env, stockOnly) {
+function useOfItem(itemId, amount, product, pool, env, stockOnly, budget = Infinity) {
 	const p2 = inputPool(pool, itemId, amount);
 	// Never make more of the chosen item: it is the limit.
 	const envP = { ...env, usable: (r) => env.usable(r) && (r.type === 'export' || !r.outs.some((o) => o.id === itemId)) };
-	const test = (e) => !e.missing && inputUsed(e) > 0 && (!stockOnly || !e.pickups);
+	const test = (e) => !e.missing && inputUsed(e) > 0 && (!stockOnly || !e.pickups) && e.effRuns <= budget;
 	const e = largest(product, p2, envP, test, 500000);
 	return e ? { ...e, perRun: e.effRuns > 0 ? e.profit / e.effRuns : e.profit, used: inputUsed(e) } : null;
 }
 
 // Best SD cards for one use: start with none, add any card that raises money
 // per run while still using your item, repeat until nothing helps.
-function bestCardsForUse(itemId, amount, product, pool, env, stockOnly) {
+function bestCardsForUse(itemId, amount, product, pool, env, stockOnly, budget = Infinity) {
 	const cardsOf = new Map();
 	for (const r of RECIPES) if (r.sd) (cardsOf.get(r.sd) || cardsOf.set(r.sd, []).get(r.sd)).push(r);
 	const envFor = (on) => ({ ...env, usable: (r) => (!r.sd || on.has(r.sd)) && (env.extraUsable ? env.extraUsable(r) : true), prioOf: (r) => (r.sd && on.has(r.sd) ? 10 : env.prioOf(r)) });
-	const base = useOfItem(itemId, amount, product, pool, envFor(new Set()), stockOnly);
+	const base = useOfItem(itemId, amount, product, pool, envFor(new Set()), stockOnly, budget);
 	let best = base;
 	const on = new Set();
 	const touched = (e) => {
@@ -2793,7 +2815,7 @@ function bestCardsForUse(itemId, amount, product, pool, env, stockOnly) {
 			// Only cards that make or use something on this route can matter.
 			if (!recipes.some((r) => r.outs.some((o) => ids.has(o.id)) || r.ins.some((x) => ids.has(x.id)) || (r.exp && ids.has(r.exp.id)))) continue;
 			const trial = new Set(on).add(card);
-			const e = useOfItem(itemId, amount, product, pool, envFor(trial), stockOnly);
+			const e = useOfItem(itemId, amount, product, pool, envFor(trial), stockOnly, budget);
 			if (e && (!best || e.perRun > best.perRun * 1.005) && (!pick || e.perRun > pick.e.perRun)) pick = { card, e };
 		}
 		if (!pick) break;
@@ -4342,6 +4364,8 @@ function openUseItems() {
 		$('#useGo').onclick = runUseItems;
 		$('#useStockOnly').checked = !!store.get('useStockOnly', false);
 		$('#useStockOnly').onchange = (e) => store.set('useStockOnly', e.target.checked);
+		$('#useBudget').value = String(store.get('useBudget', 0));
+		$('#useBudget').onchange = (e) => store.set('useBudget', Number(e.target.value));
 	}
 	syncUseAmount(false);
 	openModal('#useItemsModal');
@@ -4359,6 +4383,7 @@ function runUseItems() {
 	const id = $('#useItem').value;
 	const amount = Math.max(1, parseInt($('#useAmount').value, 10) || 0);
 	const stockOnly = $('#useStockOnly').checked;
+	const budget = Number($('#useBudget').value) || Infinity;
 	box.textContent = '';
 	box.append(h('p', { class: 'hint', text: 'Working it out…' }));
 	setTimeout(() => {
@@ -4369,11 +4394,11 @@ function runUseItems() {
 			const env = { ...base, extraUsable: (r) => r.loc !== 'Mineshaft' };
 			const rows = [];
 			for (const product of productsUsing(id, (r) => r.loc !== 'Mineshaft')) {
-				const r = bestCardsForUse(id, amount, product, pool, env, stockOnly);
+				const r = bestCardsForUse(id, amount, product, pool, env, stockOnly, budget);
 				if (r.best) rows.push({ product, ...r });
 			}
 			rows.sort((a, b) => b.best.perRun - a.best.perRun);
-			renderUseResults(box, id, amount, stockOnly, rows);
+			renderUseResults(box, id, amount, stockOnly, rows, budget);
 		} catch (e) {
 			box.append(h('p', { class: 'hint', text: 'Something went wrong: ' + e.message }));
 			log('Use my items: ' + e.message, 'error');
@@ -4392,10 +4417,12 @@ function alsoNeeds(e, id) {
 	return parts.join('; ');
 }
 
-function renderUseResults(box, id, amount, stockOnly, rows) {
+function renderUseResults(box, id, amount, stockOnly, rows, budget = Infinity) {
 	const name = itemName(id);
 	// What your item is worth if you just sell it (or refine and sell it).
-	const unit = leftoverUse(id, (r) => !r.sd || !!S.sdOwned[r.sd]).value;
+	const usableNow = (r) => !r.sd || !!S.sdOwned[r.sd];
+	const direct = sellableItems(usableNow).get(id);
+	const unit = direct ? unitPrice(direct) : leftoverUse(id, usableNow).value;
 	const asIs = rows.find((r) => r.product === id);
 	const crafted = rows
 		.filter((r) => r.product !== id)
@@ -4418,9 +4445,19 @@ function renderUseResults(box, id, amount, stockOnly, rows) {
 		);
 	}
 	if (!crafted.length) {
+		if (Number.isFinite(budget)) return box.append(h('p', { class: 'hint', text: `Nothing made from ${name} fits within ${budget} runs. Try a bigger runs limit.` }));
 		box.append(h('p', { class: 'hint', text: stockOnly ? `Nothing can be crafted from ${fmt(amount)} ${name} with only what you already have. Untick “Only use what I already have” to allow pickups.` : `${name} doesn't go into anything that sells.` }));
 		return;
 	}
+	box.append(
+		h('p', {
+			class: 'hint',
+			text: Number.isFinite(budget)
+				? `Best you can do within ${budget} runs, most money per run first. Each option uses as much of your ${name} as fits in that time.`
+				: `Using as much of your ${name} as possible, most money per run first.`,
+		})
+	);
+	crafted.forEach((r, i) => (r.bestPick = i === 0 && r.gainPerRun > 0));
 	for (const r of crafted) {
 		const e = r.best;
 		const sub = [];
@@ -4440,8 +4477,8 @@ function renderUseResults(box, id, amount, stockOnly, rows) {
 		box.append(
 			h(
 				'div',
-				{ class: 'ms-row use-row' },
-				h('div', { class: 'ms-main' }, h('div', { class: 'ms-title', text: `${fmt(e.n)} ${itemName(r.product)}` }), h('small', { text: sub.join('; ') }), cards),
+				{ class: 'ms-row use-row' + (r.bestPick ? ' picked' : '') },
+				h('div', { class: 'ms-main' }, h('div', { class: 'ms-title' }, `${fmt(e.n)} ${itemName(r.product)}`, r.bestPick ? h('span', { class: 'best-pick', text: 'Best pick' }) : null), h('small', { text: sub.join('; ') }), cards),
 				h(
 					'div',
 					{ class: 'ms-figs' },
