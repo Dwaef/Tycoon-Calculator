@@ -1489,7 +1489,7 @@ body.overlay #pin .gps-row {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10j"><span></span>Haul Planner <small class="ver">2026-10-10j</small></h1>
+				<h1 title="Version 2026-10-10k"><span></span>Haul Planner <small class="ver">2026-10-10k</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1616,7 +1616,7 @@ body.overlay #pin .gps-row {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10j. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10k. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -3502,17 +3502,25 @@ function nearest(points, from) {
 	return points.reduce((best, p) => (dist(p, from) < dist(best, from) ? p : best));
 }
 
-function locationPos(loc) {
+// Every known spot for a location: the API position plus any extra spots
+// learned in-game (e.g. the other logging camps).
+function locationSpots(loc) {
 	const live = store.get('apiLocPos', null);
 	const p = live?.[loc] || LOCATION_POS[loc] || null;
-	if (p) return { x: p[0], y: p[1] };
-	const l = learned()[loc];
-	return l ? { x: l.x, y: l.y } : null;
+	const spots = p ? [{ x: p[0], y: p[1] }] : [];
+	const extra = learned()[loc];
+	for (const l of Array.isArray(extra) ? extra : extra ? [extra] : []) spots.push({ x: l.x, y: l.y });
+	return spots;
 }
 
-function recipePos(r) {
+// The closest spot to you (or to `from`).
+function locationPos(loc, from) {
+	return nearest(locationSpots(loc), from || here());
+}
+
+function recipePos(r, from) {
 	if (r.type === 'export' && SELL_POS[r.loc]) return { x: SELL_POS[r.loc][0], y: SELL_POS[r.loc][1] };
-	return locationPos(r.loc);
+	return locationPos(r.loc, from);
 }
 
 // Refresh location positions from the TTycoon.eu API (no key needed).
@@ -3562,13 +3570,16 @@ function learnLocation() {
 		else if (best && hits === best.score && hits > 0 && best.score !== Infinity) best.tie = true;
 	}
 	if (!best || best.tie) return;
-	if (LOCATION_POS[best.loc.name]) return;
+	// Already a known spot for this location? Nothing to do.
+	if (locationSpots(best.loc.name).some((sp) => dist(sp, pos) < 200)) return;
 	const all = learned();
 	const old = all[best.loc.name];
-	if (old && dist(old, pos) < 15) return;
-	all[best.loc.name] = { x: Math.round(pos.x), y: Math.round(pos.y) };
+	const list = Array.isArray(old) ? old : old ? [old] : [];
+	list.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
+	all[best.loc.name] = list;
 	store.set('locPos', all);
-	log(`Saved the position of ${locShort(best.loc.name)}.`);
+	const n = locationSpots(best.loc.name).length;
+	log(n > 1 ? `Saved another ${locShort(best.loc.name)} (${n} known). The GPS uses the closest one.` : `Saved the position of ${locShort(best.loc.name)}.`);
 	renderPin();
 }
 
