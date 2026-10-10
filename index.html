@@ -1489,7 +1489,7 @@ body.overlay #pin .gps-row {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10h"><span></span>Haul Planner <small class="ver">2026-10-10h</small></h1>
+				<h1 title="Version 2026-10-10j"><span></span>Haul Planner <small class="ver">2026-10-10j</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1616,8 +1616,9 @@ body.overlay #pin .gps-row {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10h. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10j. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
+						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
 					</div>
 				</details>
@@ -5222,6 +5223,10 @@ function init() {
 		renderRecipes();
 		replan();
 	};
+	$('#clearMarker').onclick = () => {
+		send('removeBlip', { id: 'haulplanner_dest' });
+		notify('Removed the Haul Planner map marker.');
+	};
 	$('#reloadLatest').onclick = () => {
 		// A fresh query string makes the game's browser skip its cached copy.
 		const url = new URL(location.href);
@@ -5254,8 +5259,9 @@ function init() {
 		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: pin next step' });
 		send('registerTrigger', { trigger: TRIGGERS.gps, name: 'Haul Planner: GPS to the pinned step' });
-		// Older versions added a map blip; clear it.
+		// Older versions added a map blip; clear it (again once the game is connected).
 		send('removeBlip', { id: 'haulplanner_dest' });
+		setTimeout(() => send('removeBlip', { id: 'haulplanner_dest' }), 3000);
 	}, 250);
 	setTimeout(() => (S.triggersArmed = true), 2000);
 }
