@@ -1459,13 +1459,20 @@ body.overlay #pin .pin-details {
 	display: grid;
 	gap: 2px;
 }
+
+#toolbar h1 .ver {
+	margin-left: 6px;
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--muted);
+}
 </style>
 	</head>
 	<body>
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1><span></span>Haul Planner</h1>
+				<h1 title="Version 2026-10-10b"><span></span>Haul Planner <small class="ver">2026-10-10b</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1591,6 +1598,8 @@ body.overlay #pin .pin-details {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
+						<p class="hint">Version 2026-10-10b. If an update doesn't show in-game, reload the latest version.</p>
+						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
 					</div>
 				</details>
@@ -4959,6 +4968,12 @@ function init() {
 		store.set('recipePrio', {});
 		renderRecipes();
 		replan();
+	};
+	$('#reloadLatest').onclick = () => {
+		// A fresh query string makes the game's browser skip its cached copy.
+		const url = new URL(location.href);
+		url.searchParams.set('v', String(Date.now()));
+		location.replace(url.toString());
 	};
 	$('#resetAll').onclick = () => {
 		if (!confirm('Clear your settings, API key, storages and plan?')) return;
