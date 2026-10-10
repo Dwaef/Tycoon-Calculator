@@ -1442,6 +1442,23 @@ body.overlay #pin .pin-details {
 #goalResult:empty {
 	display: none;
 }
+
+.card .store-to {
+	margin: 5px 0 0 35px;
+	font-size: 11.5px;
+	color: #7aa2d6;
+	font-weight: 600;
+}
+
+.pin-store {
+	margin: 0 0 6px;
+	padding: 5px 8px;
+	border-left: 3px solid #7aa2d6;
+	background: rgba(122, 162, 214, 0.08);
+	font-size: 12px;
+	display: grid;
+	gap: 2px;
+}
 </style>
 	</head>
 	<body>
@@ -1480,6 +1497,14 @@ body.overlay #pin .pin-details {
 							<p class="hint" id="goalResult"></p>
 						</div>
 						<label class="toggle"><input type="checkbox" data-setting="sell" /><span>Sell at the end when possible</span></label>
+					</div>
+				</details>
+
+				<details id="whereGoSection" hidden>
+					<summary>Where things go</summary>
+					<div class="section">
+						<p class="hint">What each storage needs to end up holding for this plan, and which step it comes from.</p>
+						<div id="whereGo"></div>
 					</div>
 				</details>
 
@@ -3331,6 +3356,7 @@ function replan() {
 	$('#statCost').textContent = money(totals.cost);
 	$('#statRevenue').textContent = money(totals.revenue);
 	renderLeftovers();
+	renderWhereThingsGo();
 
 	renderCapacity();
 	S.graphDirty = true;
@@ -3414,6 +3440,95 @@ function renderLeftovers() {
 	} catch (e) {
 		box.append(h('p', { class: 'hint', text: 'Couldn’t work out leftovers: ' + e.message }));
 		log('Leftovers: ' + e.message, 'error');
+	}
+}
+
+// ---------- Where things go ----------
+// Which storage a step's ingredients come from, and where its products
+// should be put, following the storage setup.
+function hubOf(loc) {
+	const f = S.settings.factionLoc;
+	return f && loc === f ? 'faction' : S.settings.mainStorage || 'biz_train';
+}
+
+const storageName = (id) => STORAGES[id]?.name || id;
+
+function hubsActive() {
+	return !!(S.settings.hubsOn && S.fullResult);
+}
+
+// item -> storage id -> amount, for one step's products.
+function productDests(key) {
+	const out = new Map();
+	if (!hubsActive()) return out;
+	const byKey = new Map(S.fullResult.nodes.map((n) => [n.key, n]));
+	for (const e of S.fullResult.edges) {
+		if (e.from !== key) continue;
+		const t = byKey.get(e.to);
+		if (!t) continue;
+		const dest = t.kind === 'transfer' ? t.src : t.kind === 'recipe' ? hubOf(t.recipe.loc) : S.settings.mainStorage || 'biz_train';
+		if (!out.has(e.id)) out.set(e.id, new Map());
+		out.get(e.id).set(dest, (out.get(e.id).get(dest) || 0) + e.n);
+	}
+	return out;
+}
+
+function destSummary(key) {
+	const stores = new Set();
+	for (const m of productDests(key).values()) for (const st of m.keys()) stores.add(st);
+	return [...stores];
+}
+
+function renderWhereThingsGo() {
+	const box = $('#whereGo');
+	const section = $('#whereGoSection');
+	box.textContent = '';
+	if (!hubsActive() || !S.fullResult.nodes.length) {
+		section.hidden = true;
+		return;
+	}
+	section.hidden = false;
+	// storage -> item -> { n, from: Set of step names }
+	const plan = new Map();
+	for (const n of S.fullResult.nodes) {
+		if (n.kind !== 'recipe' || n.recipe.type === 'export') continue;
+		for (const [id, m] of productDests(n.key))
+			for (const [st, k] of m) {
+				if (!plan.has(st)) plan.set(st, new Map());
+				const row = plan.get(st).get(id) || { n: 0, from: new Set() };
+				row.n += k;
+				row.from.add(n.recipe.name);
+				plan.get(st).set(id, row);
+			}
+	}
+	// Moves land items in their destination storage too.
+	for (const n of S.fullResult.nodes) {
+		if (n.kind !== 'transfer') continue;
+		if (!plan.has(n.dest)) plan.set(n.dest, new Map());
+		for (const [id, k] of n.takes) {
+			const row = plan.get(n.dest).get(id) || { n: 0, from: new Set() };
+			row.n += k;
+			row.from.add('move from ' + storageName(n.src));
+			plan.get(n.dest).set(id, row);
+		}
+	}
+	const order = ['faction', S.settings.mainStorage || 'biz_train'];
+	const stores = [...plan.keys()].sort((a, b) => (order.indexOf(a) + 1 || 9) - (order.indexOf(b) + 1 || 9));
+	for (const st of stores) {
+		const items = [...plan.get(st)].sort((a, b) => b[1].n * itemWeight(b[0]) - a[1].n * itemWeight(a[0]));
+		const have = (id) => S.storages.get(st)?.items.get(id) || 0;
+		box.append(
+			h('h4', { class: 'lo-head' }, h('span', { text: storageName(st) }), h('span', { class: 'hint', text: `${items.length} item${items.length === 1 ? '' : 's'}` })),
+			...items.map(([id, row]) => {
+				const got = have(id);
+				return h(
+					'div',
+					{ class: 'leftover' },
+					h('div', { class: 'leftover-top' }, h('b', { text: `${fmt(row.n)} ${itemName(id)}` }), got ? h('span', { class: got >= row.n ? 'money-in' : 'hint', text: `${fmt(got)} there now` }) : null),
+					h('small', { text: 'From ' + [...row.from].join(', ') })
+				);
+			})
+		);
 	}
 }
 
@@ -3530,6 +3645,8 @@ function cardFor(n) {
 	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
 	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
 	card.append(list);
+	const dests = r.type === 'export' ? [] : destSummary(n.key);
+	if (dests.length) card.append(h('div', { class: 'store-to', title: 'Where to put what this step makes' }, '→ ' + dests.map(storageName).join(', ')));
 	const planned = S.baseline?.steps[n.key] || 0;
 	if (planned > n.crafts) {
 		const pct = Math.round(((planned - n.crafts) / planned) * 100);
@@ -3941,6 +4058,16 @@ function renderPin() {
 		)
 	);
 	box.append(table);
+	if (hubsActive()) {
+		const lines = [];
+		if (r.ins.length) lines.push(['Take from', storageName(hubOf(r.loc))]);
+		if (r.type !== 'export') {
+			const parts = [];
+			for (const [id, m] of productDests(n.key)) for (const [st, k] of m) parts.push(`${fmt(k)} ${itemName(id)} → ${storageName(st)}`);
+			if (parts.length) lines.push(['Put in', parts.join(', ')]);
+		}
+		if (lines.length) box.append(h('div', { class: 'pin-store' }, lines.map(([a, b]) => h('div', {}, h('b', { text: a + ': ' }), h('span', { text: b })))));
+	}
 
 	box.append(carryingNow(new Set([...r.ins, ...r.outs].map((x) => x.id))));
 
