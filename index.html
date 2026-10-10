@@ -1515,8 +1515,11 @@ body.overlay #pin .pin-details {
 					<div class="section">
 						<p class="hint">Counts the trips spent moving items between storages. Crafting at your faction storage's location uses faction storage; everything else uses your main storage.</p>
 						<label class="toggle"><input type="checkbox" data-setting="hubsOn" /><span>Count trips between storages</span></label>
+						<label class="toggle sub"><input type="checkbox" data-setting="showMoves" /><span>Show move steps on the route (when off, their runs still count)</span></label>
 						<div class="row"><label for="factionLoc">Faction storage is at</label><select id="factionLoc" data-setting="factionLoc"></select></div>
 						<div class="row"><label for="mainStorage">Keep everything else in</label><select id="mainStorage" data-setting="mainStorage"></select></div>
+						<label class="toggle"><input type="checkbox" data-setting="viaMain" /><span>Things made elsewhere go into main storage first, then get moved to faction storage</span></label>
+						<label class="toggle sub"><input type="checkbox" data-setting="pickupsDirect" /><span>Except pickups, which go straight to faction storage</span></label>
 					</div>
 				</details>
 
@@ -2427,8 +2430,11 @@ function applyHubs(result, hubs) {
 		let src = null;
 		if (from.kind === 'storage') src = carried(from.storageId) ? null : from.storageId;
 		else if (from.kind === 'recipe' && fLoc && from.recipe.loc === fLoc) src = 'faction';
-		// Steps away from the faction spot drop their products straight into
-		// the storage the next step uses, as part of their own run.
+		// Made elsewhere: it goes into main storage first, so faction-storage
+		// steps need a move to bring it in (pickups can go straight there).
+		else if (from.kind === 'recipe' && hubs.viaMain && !(hubs.pickupsDirect && !from.recipe.ins.length)) src = main;
+		// Otherwise products go straight into the storage the next step uses,
+		// as part of their own run.
 		if (!src || src === dest) {
 			link(e.from, e.to, e.id, e.n);
 			continue;
@@ -2941,6 +2947,9 @@ const DEFAULTS = {
 	takeItem: '',
 	truckerOnly: true,
 	hubsOn: true,
+	showMoves: true,
+	viaMain: true,
+	pickupsDirect: true,
 	factionLoc: '',
 	mainStorage: 'biz_train',
 };
@@ -3252,7 +3261,13 @@ function enterSellPhase(pool) {
 }
 
 function hubConfig() {
-	return { enabled: !!S.settings.hubsOn, factionLoc: S.settings.factionLoc || null, mainStorage: S.settings.mainStorage || 'biz_train' };
+	return {
+		enabled: !!S.settings.hubsOn,
+		factionLoc: S.settings.factionLoc || null,
+		mainStorage: S.settings.mainStorage || 'biz_train',
+		viaMain: !!S.settings.viaMain,
+		pickupsDirect: !!S.settings.pickupsDirect,
+	};
 }
 
 function activeVehicles() {
@@ -3281,9 +3296,13 @@ function replan() {
 				.map((s) => ({ id: s.id, name: s.name, prio: storagePrio(s), items: s.items }))
 		: [];
 	const targets = sellingTargets(pool);
-	S.result = targets.length
-		? applyHubs(solve(targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] }), hubConfig())
+	const raw = targets.length
+		? solve(targets, pool, { useHM: S.settings.useHM, sell: S.settings.sell, prioOf: (r) => S.recipePrio[r.key] ?? r.prio, usable: (r) => !r.sd || !!S.sdOwned[r.sd] })
 		: { nodes: [], edges: [], surplus: new Map() };
+	// With moves hidden, the route shows the plain plan but the run total
+	// still includes the trips between storages.
+	S.fullResult = applyHubs(raw, hubConfig());
+	S.result = S.settings.showMoves ? S.fullResult : raw;
 
 	enterSellPhase(pool);
 	S.cols = S.result.nodes.length ? layoutColumns(S.result) : [];
@@ -3307,7 +3326,7 @@ function replan() {
 		}
 	}
 
-	const totals = planTotals(S.result, S.vehicles, S.settings.optimal);
+	const totals = planTotals(S.fullResult, S.vehicles, S.settings.optimal);
 	$('#statRuns').textContent = fmt(totals.runs);
 	$('#statCost').textContent = money(totals.cost);
 	$('#statRevenue').textContent = money(totals.revenue);
@@ -3570,7 +3589,8 @@ function updateBaseline() {
 }
 
 function renderProgress() {
-	const all = Object.keys(S.baseline?.steps || {});
+	// Hidden move steps aren't on the route, so they don't count as done.
+	const all = Object.keys(S.baseline?.steps || {}).filter((k) => S.settings.showMoves || !k.startsWith('transfer:'));
 	const done = all.filter((k) => !S.order.includes(k)).length;
 	$('#statSteps').textContent = all.length ? `${done}/${all.length}` : '0';
 	const next = nextKey();
