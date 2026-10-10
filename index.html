@@ -1478,13 +1478,18 @@ body.overlay #pin .pin-details {
 body.overlay #pin .gps-row {
 	display: none;
 }
+
+.gps-row .btn.on {
+	border-color: var(--amber);
+	color: var(--amber);
+}
 </style>
 	</head>
 	<body>
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10d"><span></span>Haul Planner <small class="ver">2026-10-10d</small></h1>
+				<h1 title="Version 2026-10-10e"><span></span>Haul Planner <small class="ver">2026-10-10e</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1610,7 +1615,7 @@ body.overlay #pin .gps-row {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10d. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10e. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
 					</div>
@@ -3574,47 +3579,96 @@ function gpsTo(p, name) {
 
 // Where the pinned step sends you: first the storage to load from, then
 // the place the work happens.
+// Where the pinned step sends you, in order: the storage to load from, the
+// place the work happens, then the storage its products go into.
 function stepStops(n) {
 	if (!n) return [];
-	if (n.kind === 'transfer') return [{ label: storageName(n.src), pos: storagePos(n.src) }, { label: storageName(n.dest), pos: storagePos(n.dest, storagePos(n.src)) }];
+	if (n.kind === 'transfer')
+		return [
+			{ role: 'load', label: storageName(n.src), pos: storagePos(n.src) },
+			{ role: 'drop', label: storageName(n.dest), pos: storagePos(n.dest, storagePos(n.src)) },
+		];
 	if (n.kind !== 'recipe') return [];
 	const r = n.recipe;
-	const site = { label: locShort(r.loc), pos: recipePos(r), loc: r.loc };
+	const site = { role: 'site', label: locShort(r.loc), pos: recipePos(r), loc: r.loc };
 	const stops = [];
 	if (r.ins.length && S.settings.hubsOn) {
 		const st = hubOf(r.loc);
-		stops.push({ label: storageName(st), pos: storagePos(st, here() || site.pos) });
+		stops.push({ role: 'load', label: storageName(st), pos: storagePos(st, here() || site.pos) });
 	}
 	stops.push(site);
-	// Loading and crafting at the same spot (e.g. faction storage on site).
-	if (stops.length === 2 && stops[0].pos && stops[1].pos && dist(stops[0].pos, stops[1].pos) < 60) return [{ ...site, label: `${site.label} (${stops[0].label})` }];
-	return stops;
+	if (r.type !== 'export' && hubsActive()) {
+		// The storage that takes most of what this step makes.
+		let best = null;
+		for (const m of productDests(n.key).values()) for (const [st, k] of m) if (!best || k > best.k) best = { st, k };
+		if (best) stops.push({ role: 'drop', label: 'Drop off: ' + storageName(best.st), pos: storagePos(best.st, site.pos) });
+	}
+	// Merge stops at the same spot (e.g. faction storage at the site).
+	const out = [];
+	for (const st of stops) {
+		const prev = out[out.length - 1];
+		if (prev && prev.pos && st.pos && dist(prev.pos, st.pos) < 60) {
+			const site2 = prev.role === 'site' ? prev : st;
+			const other = prev.role === 'site' ? st : prev;
+			const extra = other.label.replace(/^Drop off: /, '');
+			out[out.length - 1] = { ...site2, label: site2.label.includes(extra) ? site2.label : `${site2.label} (${extra})`, role: 'site' };
+		} else out.push(st);
+	}
+	return out;
 }
 
-function gpsPinned(which = 0) {
+function gpsStop(stops, i) {
+	const stop = stops[i];
+	if (!stop) return false;
+	S.gpsStop = { key: S.pinned, i };
+	const ok = gpsTo(stop.pos, stop.label);
+	renderPin();
+	return ok;
+}
+
+// Keybind: each press moves the GPS to the pinned step's next stop.
+function gpsPinned() {
 	const stops = stepStops(pinnedNode());
 	if (!stops.length) return notify('Pin a step first.');
-	const stop = stops[Math.min(which, stops.length - 1)];
-	if (!gpsTo(stop.pos, stop.label)) notify(`Location of ${stop.label} not known yet. Open its menu once and it's saved.`);
+	const cur = S.gpsStop?.key === S.pinned ? S.gpsStop.i : -1;
+	const i = (cur + 1) % stops.length;
+	if (!gpsStop(stops, i)) notify(`Location of ${stops[i].label} not known yet. Open its menu once and it's saved.`);
+}
+
+// Auto GPS: move on to the stop with the given role, if the step has one.
+function gpsToRole(role) {
+	if (!S.settings.autoGps) return;
+	const stops = stepStops(pinnedNode());
+	const i = stops.findIndex((st) => st.role === role && st.pos);
+	if (i >= 0 && !(S.gpsStop?.key === S.pinned && S.gpsStop.i === i)) gpsStop(stops, i);
+}
+
+function nearSite() {
+	const n = pinnedNode();
+	const p = here();
+	if (!n || n.kind !== 'recipe' || !p) return false;
+	const site = recipePos(n.recipe);
+	return !!site && dist(site, p) < 150;
 }
 
 function gpsRow(n) {
 	const stops = stepStops(n);
 	if (!stops.length) return null;
+	const cur = S.gpsStop?.key === n.key ? S.gpsStop.i : -1;
 	return h(
 		'div',
 		{ class: 'pin-actions gps-row' },
 		h('span', { class: 'hint', text: 'GPS:' }),
 		stops.map((st, i) =>
 			h('button', {
-				class: 'btn small',
+				class: 'btn small' + (i === cur ? ' on' : ''),
 				text: (stops.length > 1 ? `${i + 1}. ` : '') + st.label,
 				disabled: !st.pos,
 				title: st.pos ? 'Set the waypoint here' : 'Not known yet: open this location’s menu once and its position is saved',
-				onclick: () => gpsTo(st.pos, st.label),
+				onclick: () => gpsStop(stops, i),
 			})
 		),
-		pill('autoGps', 'Auto GPS', 'Sets the GPS when you pin a step, and to the crafting spot after loading')
+		pill('autoGps', 'Auto GPS', 'Follows the step: storage to load from, then the location, then where to drop off once you are full')
 	);
 }
 
@@ -4104,8 +4158,9 @@ function setPinned(key) {
 	highlightEdges();
 	renderPin();
 	if (key && S.settings.autoGps && S.inGame) {
-		const stop = stepStops(pinnedNode()).find((st) => st.pos);
-		if (stop) gpsTo(stop.pos, stop.label);
+		const stops = stepStops(pinnedNode());
+		const i = stops.findIndex((st) => st.pos);
+		if (i >= 0) gpsStop(stops, i);
 	}
 }
 
@@ -4459,9 +4514,7 @@ function loadPinned() {
 	}
 	runActions('Load ' + stepTitle(n), actions).then((done) => {
 		if (!done || !S.settings.autoGps) return;
-		const stops = stepStops(n);
-		const next = stops[stops.length - 1];
-		if (next?.pos) gpsTo(next.pos, next.label);
+		gpsToRole(n.kind === 'transfer' ? 'drop' : 'site');
 	});
 }
 
@@ -4496,6 +4549,7 @@ async function onMenu(prevOpen) {
 	S.busy = 'Selecting ' + n.recipe.name + '…';
 	try {
 		for (const step of path) await clickStep({ match: { text: step } });
+		gpsToRole('drop');
 	} catch (e) {
 		log('Auto-recipe: ' + e.message, 'warn');
 	} finally {
@@ -4511,6 +4565,8 @@ const EMPTY = ['Not enough items'];
 
 async function onNotification(raw) {
 	const note = stripColors(stripTags(raw));
+	// Full up at the step's location: time to drop off.
+	if (FULL.includes(note) && nearSite()) gpsToRole('drop');
 	const s = S.settings;
 	if (!s.automation || !s.autoTrunk || S.busy) return;
 	const isFull = FULL.includes(note);
