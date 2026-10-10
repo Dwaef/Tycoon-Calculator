@@ -1483,13 +1483,165 @@ body.overlay #pin .gps-row {
 	border-color: var(--amber);
 	color: var(--amber);
 }
+/* ---------- Fixed-size pinned card ---------- */
+#pin,
+body.overlay #pin {
+	width: 280px;
+	height: min(330px, calc(100vh - 8px));
+	max-height: none;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	padding: 0 10px 8px 14px;
+}
+
+#pin[hidden],
+body.overlay #pin[hidden] {
+	display: none;
+}
+
+#pin.collapsed {
+	height: auto;
+}
+
+#pin > .pin-grip,
+#pin > .pin-head {
+	flex: none;
+}
+
+#pin > .pin-grip {
+	position: static;
+	margin: 0 -10px 4px -14px;
+	height: 12px;
+}
+
+.pin-body {
+	flex: 1;
+	min-height: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+body.overlay .pin-body {
+	overflow: hidden;
+}
+
+.pin-titles .where {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#pin .pin-name {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+#pin .pin-summary {
+	margin: 2px 0 4px;
+}
+
+#pin .pin-table {
+	margin-bottom: 4px;
+}
+
+#pin .pin-table td:first-child {
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#pin .pin-table td.makes-all {
+	max-width: none;
+	white-space: normal;
+	text-align: left;
+	line-height: 1.25;
+}
+
+#pin .pin-store {
+	margin-bottom: 4px;
+	padding: 3px 7px;
+	font-size: 11.5px;
+	line-height: 1.25;
+}
+
+#pin .carrying {
+	gap: 3px;
+	padding: 4px 7px;
+	margin-bottom: 4px;
+}
+
+#pin .veh {
+	position: relative;
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	padding-bottom: 4px;
+	font-size: 12px;
+}
+
+#pin .veh::before,
+#pin .veh::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	height: 2px;
+	border-radius: 1px;
+}
+
+#pin .veh::before {
+	right: 0;
+	background: var(--asphalt-3);
+}
+
+#pin .veh::after {
+	width: var(--pct);
+	background: var(--go);
+}
+
+#pin .veh.full::after {
+	background: var(--amber);
+}
+
+#pin .veh b {
+	flex: none;
+	min-width: 34px;
+}
+
+#pin .veh-items {
+	flex: 1;
+	min-width: 0;
+	padding: 0;
+	font-size: 11.5px;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+#pin .veh-kg {
+	flex: none;
+	font-size: 10.5px;
+}
+
+#pin .path {
+	margin-top: 3px;
+}
+
+#pin .gps-row {
+	margin-top: 4px;
+}
 </style>
 	</head>
 	<body>
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10k"><span></span>Haul Planner <small class="ver">2026-10-10k</small></h1>
+				<h1 title="Version 2026-10-10l"><span></span>Haul Planner <small class="ver">2026-10-10l</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1616,7 +1768,7 @@ body.overlay #pin .gps-row {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10k. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10l. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -3179,6 +3331,8 @@ function applyJob() {
 function applyFocus() {
 	const overlay = S.inGame && S.game.focused === false;
 	document.body.classList.toggle('overlay', overlay);
+	fitPin();
+	placePin();
 	if (!overlay && S.graphDirty) renderGraph();
 }
 
@@ -4138,8 +4292,8 @@ function placePin() {
 		box.style.right = box.style.bottom = '';
 		return;
 	}
-	const maxX = Math.max(0, window.innerWidth - box.offsetWidth - 4);
-	const maxY = Math.max(0, window.innerHeight - 40);
+	const maxX = Math.max(4, window.innerWidth - box.offsetWidth - 4);
+	const maxY = Math.max(4, window.innerHeight - box.offsetHeight - 4);
 	box.style.left = Math.min(maxX, Math.max(4, pos.x)) + 'px';
 	box.style.top = Math.min(maxY, Math.max(4, pos.y)) + 'px';
 	box.style.right = box.style.bottom = 'auto';
@@ -4170,7 +4324,10 @@ function setupPinDrag() {
 		store.set('pinPos', null);
 		placePin();
 	});
-	window.addEventListener('resize', placePin);
+	window.addEventListener('resize', () => {
+		fitPin();
+		placePin();
+	});
 	placePin();
 }
 
@@ -4198,6 +4355,43 @@ function pinnedNode() {
 }
 
 function renderPin() {
+	renderPinContent();
+	layoutPin();
+}
+
+// The card keeps one fixed size whatever the step. Everything under the
+// header goes into a body that is scaled down until it fits.
+function layoutPin() {
+	const box = $('#pin');
+	if (box.hidden) return;
+	const head = box.querySelector(':scope > .pin-head') || box.querySelector(':scope > .pin-grip');
+	const body = h('div', { class: 'pin-body' });
+	const fit = h('div', { class: 'pin-fit' });
+	body.append(fit);
+	for (let el = head.nextSibling; el; ) {
+		const next = el.nextSibling;
+		fit.append(el);
+		el = next;
+	}
+	box.append(body);
+	fitPin();
+	placePin();
+}
+
+function fitPin() {
+	const body = $('#pin .pin-body');
+	const fit = $('#pin .pin-fit');
+	if (!body || !fit || $('#pin').hidden) return;
+	fit.style.zoom = '';
+	// With the app open the body just scrolls; over gameplay it shrinks to fit.
+	if (!document.body.classList.contains('overlay')) return;
+	for (let z = 1; z >= 0.7; z -= 0.03) {
+		fit.style.zoom = String(z);
+		if (body.scrollHeight <= body.clientHeight + 1) break;
+	}
+}
+
+function renderPinContent() {
 	const box = $('#pin');
 	const n = pinnedNode();
 	box.textContent = '';
@@ -4317,8 +4511,11 @@ function renderPin() {
 			'tbody',
 			{},
 			items.map((x) => h('tr', {}, h('td', { text: itemName(x.id) }), h('td', { text: splitText(info.loads, x.id, field) }), h('td', { text: fmt(x.n * n.crafts) }))),
-			r.ins.length ? r.outs.map((x) => h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Makes ' + itemName(x.id) }), h('td', { text: fmt(x.n * n.crafts) }))) : null,
-			r.bonus ? h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Plus ' + r.bonus.name }), h('td', { text: fmt(r.bonus.n * n.crafts) })) : null
+			r.ins.length && r.outs.length + (r.bonus ? 1 : 0) === 1 ? r.outs.map((x) => h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Makes ' + itemName(x.id) }), h('td', { text: fmt(x.n * n.crafts) }))) : null,
+			r.ins.length && r.outs.length + (r.bonus ? 1 : 0) > 1
+				? h('tr', { class: 'makes' }, h('td', { colspan: '3', class: 'makes-all', text: 'Makes ' + [...r.outs.map((x) => `${fmt(x.n * n.crafts)} ${itemName(x.id)}`), ...(r.bonus ? [`${fmt(r.bonus.n * n.crafts)} ${r.bonus.name}`] : [])].join(', ') }))
+				: null,
+			!r.ins.length && r.bonus ? h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Plus ' + r.bonus.name }), h('td', { text: fmt(r.bonus.n * n.crafts) })) : null
 		)
 	);
 	box.append(table);
@@ -4326,9 +4523,9 @@ function renderPin() {
 		const lines = [];
 		if (r.ins.length) lines.push(['Take from', storageName(hubOf(r.loc))]);
 		if (r.type !== 'export') {
-			const parts = [];
-			for (const [id, m] of productDests(n.key)) for (const [st, k] of m) parts.push(`${fmt(k)} ${itemName(id)} → ${storageName(st)}`);
-			if (parts.length) lines.push(['Put in', parts.join(', ')]);
+			const byStore = new Map();
+			for (const [id, m] of productDests(n.key)) for (const [st, k] of m) byStore.set(st, [...(byStore.get(st) || []), `${fmt(k)} ${itemName(id)}`]);
+			for (const [st, parts] of byStore) lines.push([`Put in ${storageName(st)}`, parts.join(', ')]);
 		}
 		if (lines.length) box.append(h('div', { class: 'pin-store' }, lines.map(([a, b]) => h('div', {}, h('b', { text: a + ': ' }), h('span', { text: b })))));
 	}
@@ -4396,7 +4593,7 @@ function carryingNow(relevant) {
 			if (S.game.weight != null) used = Number(S.game.weight);
 		}
 		const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
-		const contents = h('div', { class: 'veh-items' });
+		const contents = h('span', { class: 'veh-items' });
 		if (!st) contents.append(h('span', { class: 'hint', text: 'not opened yet' }));
 		else if (!items.length) contents.append(h('span', { class: 'hint', text: [...st.items.values()].some((k) => k > 0) ? 'nothing with weight' : 'empty' }));
 		else
@@ -4404,12 +4601,14 @@ function carryingNow(relevant) {
 				if (i) contents.append(', ');
 				contents.append(h('span', { class: relevant.has(id) ? 'relevant' : '', text: `${itemName(id)} ${fmt(k)}` }));
 			});
+		contents.title = contents.textContent;
 		wrap.append(
 			h(
 				'div',
-				{ class: 'veh' },
-				h('div', { class: 'veh-head' }, h('b', { text: v.id === 'inventory' ? 'Inv' : v.cab ? 'MK15' : v.name }), h('div', { class: 'meter' + (pct >= 95 ? ' full' : '') }, h('span', { style: `width:${pct}%` })), h('span', { class: 'veh-kg', text: st ? `${fmt(used)}/${fmt(cap)} kg` : '' })),
-				contents
+				{ class: 'veh' + (pct >= 95 ? ' full' : ''), style: `--pct:${pct}%` },
+				h('b', { text: v.id === 'inventory' ? 'Inv' : v.cab ? 'MK15' : v.name }),
+				contents,
+				h('span', { class: 'veh-kg', text: st ? `${fmt(used)}/${fmt(cap)}` : '' })
 			)
 		);
 	}
