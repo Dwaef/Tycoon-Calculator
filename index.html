@@ -1466,13 +1466,25 @@ body.overlay #pin .pin-details {
 	font-weight: 400;
 	color: var(--muted);
 }
+
+.gps-row {
+	margin-top: 5px;
+}
+
+.gps-row .btn:disabled {
+	text-decoration: line-through;
+}
+
+body.overlay #pin .gps-row {
+	display: none;
+}
 </style>
 	</head>
 	<body>
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10b"><span></span>Haul Planner <small class="ver">2026-10-10b</small></h1>
+				<h1 title="Version 2026-10-10d"><span></span>Haul Planner <small class="ver">2026-10-10d</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1580,7 +1592,7 @@ body.overlay #pin .pin-details {
 							<button class="btn" id="takeBtn">Take max into trunks</button>
 							<button class="btn" id="dumpBtn">Empty trunks</button>
 						</div>
-						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”, including one to pin the next step.</p>
+						<p class="hint">Keybinds: Settings → Keybinds → FiveM → “Haul Planner: …”, including ones to pin the next step and to set the GPS for the pinned step.</p>
 					</div>
 				</details>
 
@@ -1598,7 +1610,7 @@ body.overlay #pin .pin-details {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10b. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10d. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
 					</div>
@@ -2934,12 +2946,21 @@ function bestCardsForUse(itemId, amount, product, pool, env, stockOnly, budget =
 	return { base, best, cards: [...on] };
 }
 
+// Trucking location map positions (x, y), from ttycoon.eu/api/v1/trucking/locations.
+// The app refreshes these from the API on load when it can.
+const LOCATION_POS = {"House Construction Site":[1376.9,-739.8],"Illegal: Defib Kit Charging":[661.1,169.9],"Illegal: Humane Labs":[3614.4,3734.5],"Illegal: Liquor Ace":[1373.4,3615.5],"Illegal: Plastic Molding":[-1014.6,-2234.5],"Trucking Cargo Merchant: Erasers":[837.5,-1932.3],"Trucking Cargo Merchant: Tools":[834.8,-1988.7],"Trucking: Alta Construction Site":[98.9,-386.9],"Trucking: Bristols Fuel Storage":[544.3,-2731.9],"Trucking: Chemical Laboratories":[3463.0,3682.5],"Trucking: Clucking Bell Farms":[31.7,6287.0],"Trucking: Davis Mega Mall":[101.4,-1824.5],"Trucking: Deep Quarry":[2962.7,2746.5],"Trucking: Electronics Store":[-15.8,6455.5],"Trucking: Elysian Island Waste Deposit":[264.7,-3022.2],"Trucking: Filtering Plant":[270.1,2852.0],"Trucking: Fridgit Co.":[918.5,-1556.5],"Trucking: Harmony Shopping Center":[597.7,2798.6],"Trucking: Grapeseed Farms":[1913.0,4940.8],"Trucking: Great Chaparral Farm":[-63.7,1880.2],"Trucking: GSD Gas Pumping Station":[589.0,2904.5],"Trucking: GSD Mine":[1025.0,2909.8],"Trucking: Jewelry Store":[-637.3,-241.3],"Trucking: Land Act Reservoir":[1534.3,834.6],"Trucking: Logging Camp":[-961.3,4173.1],"Trucking: LS Factory":[233.8,-2210.7],"Trucking: LS Foundry":[1066.2,-1962.4],"Trucking: LS Oil Pumping Station":[1359.0,-1854.7],"Trucking: LS Port Export":[-410.7,-2691.1],"Trucking: LSIA Shipments":[-1155.6,-2188.2],"Trucking: McKenzie Export":[2148.1,4806.4],"Trucking: Military Workshop":[-1759.1,3062.1],"Trucking: Oil Depository":[1589.1,-1713.2],"Trucking: Quarry":[2682.8,2817.8],"Trucking: Raven Slaughterhouse":[957.5,-2115.6],"Trucking: Recycling Center":[-345.9,-1562.5],"Trucking: Refinery":[2809.6,1551.9],"Trucking: Sawmill":[-559.1,5262.1],"Trucking: Sorting Facility":[1712.4,3771.5],"Trucking: Vehicle Factory":[484.9,-1978.8],"Trucking: Vehicle Parts":[-64.9,6396.3],"Trucking: Water Treatment Plant":[156.2,-2409.1]};
+// Where sales happen when it differs from the pickup spot.
+const SELL_POS = {"Trucking Cargo Merchant: Erasers":[-1132.6,2697.7],"Trucking Cargo Merchant: Tools":[-3164.9,1122.8]};
+
+// Storage map positions (x, y). The train network has a station at each point.
+const STORAGE_POS = {"bctp":[[388.4,3586.8],[314.2,3633.8]],"pbsf":[[46.4,6458.8],[-37.6,7057.8],[-455.5,6552.8]],"bhsl":[[-512.5,-2200.1]],"tsu":[[911.3,-1256.3]],"dpss":[[-1614.7,-821.4],[-1842.7,-1006.7]],"gohq":[[2674.7,1429.9]],"fthq":[[340.4,-562.0]],"bats":[[-639.2,-1727.0]],"fyrecay":[[4448.4,-4483.1]],"biz_hookies":[[-2209.1,4246.7]],"biz_granny":[[2195.7,5606.6]],"biz_yellowjack":[[1995.2,3036.0]],"biz_stripclub":[[138.8,-1277.2]],"biz_ltweld":[[1175.7,-1316.5]],"biz_walker":[[126.8,-3212.7]],"biz_lsia":[[-1205.3,-2630.7],[-1079.0,-2865.3],[-1380.2,-3241.3]],"biz_murrietta_oil":[[1735.6,-1538.4]],"biz_playboi":[[-1551.0,130.1]],"biz_vineyard":[[-1922.0,2047.1]],"biz_train":[[151.6,6403.0],[2928.7,4627.6],[2687.4,2767.3],[-114.8,-2576.6],[796.7,-3215.6],[1972.4,3636.5],[735.1,-878.4],[511.9,-625.4],[4902.7,-5194.2],[4940.5,-5132.1],[2690.8,1356.8]]};
+
 // ===== App =====
 
 const API_BASE = 'https://tycoon-2epova.users.cfx.re/status/';
 const API_MIRROR = 'https://d.ttstats.eu/public-main/status/';
 const NOTIFY_PREFIX = '~y~[Haul Planner]~w~ ';
-const TRIGGERS = { load: 'haulplanner_load', dump: 'haulplanner_dump', take: 'haulplanner_take', next: 'haulplanner_next' };
+const TRIGGERS = { load: 'haulplanner_load', dump: 'haulplanner_dump', take: 'haulplanner_take', next: 'haulplanner_next', gps: 'haulplanner_gps' };
 
 // ---------- Storage (namespaced localStorage) ----------
 const NS = 'haulplanner:';
@@ -2978,6 +2999,7 @@ const DEFAULTS = {
 	dumpFirst: true,
 	autoRecipe: false,
 	autoTrunk: false,
+	autoGps: false,
 	takeItem: '',
 	truckerOnly: true,
 	hubsOn: true,
@@ -3093,6 +3115,7 @@ function onGameData(data) {
 			if (action === 'dump') dumpTrunks();
 			if (action === 'take') takeMax();
 			if (action === 'next') stepPin(1);
+			if (action === 'gps') gpsPinned();
 		}
 	}
 
@@ -3450,6 +3473,149 @@ function renderLeftovers() {
 		box.append(h('p', { class: 'hint', text: 'Couldn’t work out leftovers: ' + e.message }));
 		log('Leftovers: ' + e.message, 'error');
 	}
+}
+
+// ---------- GPS ----------
+// Locations are learned when you open their menu in-game; storages have
+// fixed positions. Faction storage sits at your chosen faction location.
+const learned = () => store.get('locPos', {});
+
+function here() {
+	const x = Number(S.game.pos_x);
+	const y = Number(S.game.pos_y);
+	return Number.isFinite(x) && Number.isFinite(y) && (x || y) ? { x, y } : null;
+}
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function nearest(points, from) {
+	if (!points.length) return null;
+	if (!from) return points[0];
+	return points.reduce((best, p) => (dist(p, from) < dist(best, from) ? p : best));
+}
+
+function locationPos(loc) {
+	const live = store.get('apiLocPos', null);
+	const p = live?.[loc] || LOCATION_POS[loc] || null;
+	if (p) return { x: p[0], y: p[1] };
+	const l = learned()[loc];
+	return l ? { x: l.x, y: l.y } : null;
+}
+
+function recipePos(r) {
+	if (r.type === 'export' && SELL_POS[r.loc]) return { x: SELL_POS[r.loc][0], y: SELL_POS[r.loc][1] };
+	return locationPos(r.loc);
+}
+
+// Refresh location positions from the TTycoon.eu API (no key needed).
+async function refreshLocationPositions() {
+	try {
+		const res = await fetch('https://ttycoon.eu/api/v1/trucking/locations');
+		if (!res.ok) return;
+		const list = await res.json();
+		const norm = (s) => String(s).replace(/^(Trucking|Illegal|Hunter|Trucking Cargo Merchant)\s*:\s*/, '').toLowerCase().trim();
+		const alias = { erasers: 'cargo seller: erasers', tools: 'cargo seller: tools' };
+		const by = new Map(list.filter((l) => Number.isFinite(l.x) && Number.isFinite(l.y)).map((l) => [norm(l.name), l]));
+		const out = {};
+		for (const L of LOCATIONS) {
+			const a = by.get(norm(L.name)) || by.get(alias[norm(L.name)]);
+			if (a) out[L.name] = [Math.round(a.x * 10) / 10, Math.round(a.y * 10) / 10];
+		}
+		if (Object.keys(out).length) store.set('apiLocPos', out);
+	} catch {
+		// Offline or blocked: the built-in positions are used.
+	}
+}
+
+function storagePos(id, from) {
+	if (id === 'faction') return S.settings.factionLoc ? locationPos(S.settings.factionLoc) : null;
+	const pts = (STORAGE_POS[id] || []).map(([x, y]) => ({ x, y }));
+	return nearest(pts, from || here());
+}
+
+// When a location's menu opens, remember where it is.
+function learnLocation() {
+	const pos = here();
+	if (!pos || !S.game.menu_open) return;
+	const title = stripColors(stripTags(S.game.menu || '')).toLowerCase();
+	const choices = new Set((S.game.menu_choices || []).map((c) => stripTags(Array.isArray(c) ? c[0] : c)));
+	let best = null;
+	for (const loc of LOCATIONS) {
+		const short = loc.name.replace(/^[^:]+: /, '').toLowerCase();
+		if (title && (title === short || title === loc.name.toLowerCase())) {
+			best = { loc, score: Infinity };
+			break;
+		}
+		const firsts = [...new Set(loc.recipes.map((r) => r.path[0]).filter(Boolean))];
+		if (!firsts.length) continue;
+		const hits = firsts.filter((f) => choices.has(f)).length;
+		// Most of this location's own menu entries must be on screen.
+		if (hits >= Math.max(1, Math.ceil(firsts.length * 0.6)) && (!best || hits > best.score)) best = { loc, score: hits, tie: false };
+		else if (best && hits === best.score && hits > 0 && best.score !== Infinity) best.tie = true;
+	}
+	if (!best || best.tie) return;
+	if (LOCATION_POS[best.loc.name]) return;
+	const all = learned();
+	const old = all[best.loc.name];
+	if (old && dist(old, pos) < 15) return;
+	all[best.loc.name] = { x: Math.round(pos.x), y: Math.round(pos.y) };
+	store.set('locPos', all);
+	log(`Saved the position of ${locShort(best.loc.name)}.`);
+	renderPin();
+}
+
+function gpsTo(p, name) {
+	if (!p) return false;
+	send('setWaypoint', { x: p.x, y: p.y });
+	send('buildBlip', { id: 'haulplanner_dest', x: p.x, y: p.y, sprite: 478, color: 5, alwaysVisible: true, route: false, ticked: false, name: 'Haul Planner: ' + name });
+	notify('GPS set: ' + name);
+	return true;
+}
+
+// Where the pinned step sends you: first the storage to load from, then
+// the place the work happens.
+function stepStops(n) {
+	if (!n) return [];
+	if (n.kind === 'transfer') return [{ label: storageName(n.src), pos: storagePos(n.src) }, { label: storageName(n.dest), pos: storagePos(n.dest, storagePos(n.src)) }];
+	if (n.kind !== 'recipe') return [];
+	const r = n.recipe;
+	const site = { label: locShort(r.loc), pos: recipePos(r), loc: r.loc };
+	const stops = [];
+	if (r.ins.length && S.settings.hubsOn) {
+		const st = hubOf(r.loc);
+		stops.push({ label: storageName(st), pos: storagePos(st, here() || site.pos) });
+	}
+	stops.push(site);
+	// Loading and crafting at the same spot (e.g. faction storage on site).
+	if (stops.length === 2 && stops[0].pos && stops[1].pos && dist(stops[0].pos, stops[1].pos) < 60) return [{ ...site, label: `${site.label} (${stops[0].label})` }];
+	return stops;
+}
+
+function gpsPinned(which = 0) {
+	const stops = stepStops(pinnedNode());
+	if (!stops.length) return notify('Pin a step first.');
+	const stop = stops[Math.min(which, stops.length - 1)];
+	if (!gpsTo(stop.pos, stop.label)) notify(`Location of ${stop.label} not known yet. Open its menu once and it's saved.`);
+}
+
+function gpsRow(n) {
+	const stops = stepStops(n);
+	if (!stops.length) return null;
+	return h(
+		'div',
+		{ class: 'pin-actions gps-row' },
+		h('span', { class: 'hint', text: 'GPS:' }),
+		stops.map((st, i) =>
+			h('button', {
+				class: 'btn small',
+				text: (stops.length > 1 ? `${i + 1}. ` : '') + st.label,
+				disabled: !st.pos,
+				title: st.pos ? 'Set the waypoint here' : 'Not known yet: open this location’s menu once and its position is saved',
+				onclick: () => gpsTo(st.pos, st.label),
+			})
+		),
+		pill('autoGps', 'Auto GPS', 'Sets the GPS when you pin a step, and to the crafting spot after loading')
+	);
 }
 
 // ---------- Where things go ----------
@@ -3937,6 +4103,10 @@ function setPinned(key) {
 	if (key) document.querySelector(`.card[data-key="${CSS.escape(key)}"]`)?.classList.add('pinned');
 	highlightEdges();
 	renderPin();
+	if (key && S.settings.autoGps && S.inGame) {
+		const stop = stepStops(pinnedNode()).find((st) => st.pos);
+		if (stop) gpsTo(stop.pos, stop.label);
+	}
 }
 
 function pinnedNode() {
@@ -4040,6 +4210,7 @@ function renderPin() {
 			);
 			box.append(h('div', { class: 'path', text: `Load at ${src}, then empty trunks at ${dest}.` }));
 		}
+		box.append(gpsRow(n) || '');
 		if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
 		box.append(detailsBlock(n));
 		return;
@@ -4105,6 +4276,7 @@ function renderPin() {
 			)
 		);
 	}
+	box.append(gpsRow(n) || '');
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
 	box.append(detailsBlock(n));
 }
@@ -4261,6 +4433,7 @@ async function runActions(label, actions) {
 		}
 		notify(`${label}: ${done} of ${actions.length} done.`);
 		log(`${label}: ${done} of ${actions.length} done.`);
+		return done;
 	} finally {
 		S.busy = false;
 		renderPin();
@@ -4284,7 +4457,12 @@ function loadPinned() {
 		const v = S.vehicles[load.vehicle];
 		for (const x of load.items) actions.push(takeAction(v, x.id, x.n));
 	}
-	runActions('Load ' + stepTitle(n), actions);
+	runActions('Load ' + stepTitle(n), actions).then((done) => {
+		if (!done || !S.settings.autoGps) return;
+		const stops = stepStops(n);
+		const next = stops[stops.length - 1];
+		if (next?.pos) gpsTo(next.pos, next.label);
+	});
 }
 
 function dumpTrunks() {
@@ -4303,6 +4481,7 @@ function takeMax() {
 
 // Auto-recipe: once per menu opening, click through the pinned recipe's path.
 async function onMenu(prevOpen) {
+	if (S.game.menu_open) learnLocation();
 	if (!S.game.menu_open) {
 		S.recipeFiredForMenu = false;
 		return;
@@ -4961,6 +5140,7 @@ function init() {
 	$('#openMakeSell').onclick = openMakeSell;
 	$('#openUseItems').onclick = openUseItems;
 	setupGoal();
+	refreshLocationPositions();
 	$('#storageSearch').oninput = renderStorages;
 	$('#recipeSearch').oninput = renderRecipes;
 	$('#resetPrio').onclick = () => {
@@ -5000,6 +5180,7 @@ function init() {
 		send('registerTrigger', { trigger: TRIGGERS.dump, name: 'Haul Planner: empty trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: pin next step' });
+		send('registerTrigger', { trigger: TRIGGERS.gps, name: 'Haul Planner: GPS to the pinned step' });
 	}, 250);
 	setTimeout(() => (S.triggersArmed = true), 2000);
 }
