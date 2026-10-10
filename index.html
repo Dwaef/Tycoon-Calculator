@@ -1489,7 +1489,7 @@ body.overlay #pin .gps-row {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10f"><span></span>Haul Planner <small class="ver">2026-10-10f</small></h1>
+				<h1 title="Version 2026-10-10h"><span></span>Haul Planner <small class="ver">2026-10-10h</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1616,7 +1616,7 @@ body.overlay #pin .gps-row {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10f. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-10h. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
 					</div>
@@ -3160,6 +3160,7 @@ function onGameData(data) {
 	if ('max_weight' in data) renderCapacity();
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
+	if (storagesChanged) gpsAfterDrop();
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
 	else if (storagesChanged || 'weight' in data || 'max_weight' in data) {
 		renderPin();
@@ -3573,7 +3574,6 @@ function learnLocation() {
 function gpsTo(p, name) {
 	if (!p) return false;
 	send('setWaypoint', { x: p.x, y: p.y });
-	send('buildBlip', { id: 'haulplanner_dest', x: p.x, y: p.y, sprite: 478, color: 5, alwaysVisible: true, route: false, ticked: false, name: 'Haul Planner: ' + name });
 	notify('GPS set: ' + name);
 	return true;
 }
@@ -3642,6 +3642,22 @@ function gpsToRole(role) {
 	const stops = stepStops(pinnedNode());
 	const i = stops.findIndex((st) => st.role === role && st.pos);
 	if (i >= 0 && !(S.gpsStop?.key === S.pinned && S.gpsStop.i === i)) gpsStop(stops, i);
+}
+
+// Dropped off: a storage opened at the drop-off point (or trunks emptied
+// there) means the run is done, so point the GPS back at the first stop.
+function gpsAfterDrop() {
+	if (!S.settings.autoGps || S.gpsStop?.key !== S.pinned) return;
+	const stops = stepStops(pinnedNode());
+	const cur = stops[S.gpsStop.i];
+	const p = here();
+	if (!cur || cur.role !== 'drop' || !cur.pos || !p || dist(cur.pos, p) > 150) return;
+	// Wait a moment so the plan can update first (the step may have finished).
+	setTimeout(() => {
+		const again = stepStops(pinnedNode());
+		const i = again.findIndex((st) => st.pos);
+		if (i >= 0 && S.gpsStop?.key === S.pinned && again[S.gpsStop.i]?.role === 'drop') gpsStop(again, i);
+	}, 600);
 }
 
 function nearSite() {
@@ -4521,7 +4537,7 @@ function loadPinned() {
 
 function dumpTrunks() {
 	if (!S.settings.automation) return log('Turn on automation to empty trunks.', 'warn');
-	runActions('Empty trunks', loadedTrunks().map(dumpAction));
+	runActions('Empty trunks', loadedTrunks().map(dumpAction)).then((done) => done && gpsAfterDrop());
 }
 
 function takeMax() {
@@ -5238,6 +5254,8 @@ function init() {
 		send('registerTrigger', { trigger: TRIGGERS.take, name: 'Haul Planner: take max into trunks' });
 		send('registerTrigger', { trigger: TRIGGERS.next, name: 'Haul Planner: pin next step' });
 		send('registerTrigger', { trigger: TRIGGERS.gps, name: 'Haul Planner: GPS to the pinned step' });
+		// Older versions added a map blip; clear it.
+		send('removeBlip', { id: 'haulplanner_dest' });
 	}, 250);
 	setTimeout(() => (S.triggersArmed = true), 2000);
 }
