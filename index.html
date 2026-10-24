@@ -1641,7 +1641,7 @@ body.overlay .pin-body {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-24b"><span></span>Haul Planner <small class="ver">2026-10-24b</small></h1>
+				<h1 title="Version 2026-10-24c"><span></span>Haul Planner <small class="ver">2026-10-24c</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1653,6 +1653,7 @@ body.overlay .pin-body {
 					<div><small>Spend</small><b class="spend" id="statCost">$0</b></div>
 					<div><small>Earn</small><b class="earn" id="statRevenue">$0</b></div>
 					<div title="Byproducts this plan makes, plus spare stock it doesn't use, at their best sale value"><small>Leftovers</small><b class="earn" id="statLeftovers">$0</b></div>
+					<div id="statFeesBox"><small id="statFeesLabel">Storage fees</small><b class="spend" id="statFees">$0</b></div>
 				</div>
 			</header>
 
@@ -1721,6 +1722,9 @@ body.overlay .pin-body {
 						<div class="row"><label for="mainStorage">Keep everything else in</label><select id="mainStorage" data-setting="mainStorage"></select></div>
 						<label class="toggle"><input type="checkbox" data-setting="viaMain" /><span>Things made elsewhere go into main storage first, then get moved to faction storage</span></label>
 						<label class="toggle sub"><input type="checkbox" data-setting="pickupsDirect" /><span>Except pickups, which go straight to faction storage</span></label>
+						<div class="row"><label for="feePerKg">Storage fee per kg ($)</label><input id="feePerKg" type="number" min="0" step="0.01" data-setting="feePerKg" /></div>
+						<div class="row"><label for="cardValue">One storage card covers ($)</label><input id="cardValue" type="number" min="1" step="1000" data-setting="cardValue" /></div>
+						<label class="toggle"><input type="checkbox" data-setting="useCards" /><span>Use storage cards for deposits (counts cards instead of taking the fees off the profit). Faction storage is free.</span></label>
 						<label class="toggle"><input type="checkbox" data-setting="roundTrips" /><span>Round trips: if a faction-location step’s items all come from main storage, load them there, craft on site and bring the products straight back (no faction storage, no move steps)</span></label>
 					</div>
 				</details>
@@ -1769,7 +1773,7 @@ body.overlay .pin-body {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-24b. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-24c. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -2601,7 +2605,7 @@ const FACTION_CAP = 575000;
 
 function applyHubs(result, hubs) {
 	for (const n of result.nodes) if (n.kind === 'recipe') delete n.inStorage;
-	if (!hubs || !hubs.enabled) return result;
+	if (!hubs || !hubs.enabled) return { ...result, fee: hubs?.fee || null };
 	const fLoc = hubs.factionLoc || null;
 	const main = hubs.mainStorage || 'biz_train';
 	const byKey = new Map(result.nodes.map((n) => [n.key, n]));
@@ -2686,7 +2690,7 @@ function applyHubs(result, hubs) {
 		link(e.from, key, e.id, e.n);
 		link(key, e.to, e.id, e.n);
 	}
-	return { ...result, nodes, edges: [...edges.values()], hubFor };
+	return { ...result, nodes, edges: [...edges.values()], hubFor, fee: hubs.fee || null };
 }
 
 // Runs for a "Move items" step, and what goes in each vehicle on the first run.
@@ -2822,7 +2826,86 @@ function planTotals(result, vehicles, optimal) {
 		const r = nodeRuns(nd, vehicles, optimal);
 		if (r && Number.isFinite(r.runs)) runs += r.runs;
 	}
-	return { cost, revenue, runs };
+	const fees = storageFees(result, vehicles, optimal);
+	// Without storage cards the deposit fees come out of the profit.
+	if (fees.fees > 0 && !result.fee.useCards) cost += fees.fees;
+	return { cost, revenue, runs, fees };
+}
+
+// --- Storage fees ---
+// Depositing into a paid storage costs a fee per kg. A storage card pays
+// $25,000 of one deposit, several are used at once for a big deposit, and a
+// small deposit still uses a whole card. Every trunk you empty (and your
+// inventory) is its own deposit, so cards are counted per trunk per run.
+function storageFees(result, vehicles, optimal) {
+	const out = { kg: 0, fees: 0, cards: 0, byNode: new Map() };
+	const fee = result.fee;
+	if (!fee || !(fee.perKg > 0) || !vehicles.length) return out;
+	const main = fee.main;
+	const paid = (st) => !!st && st !== 'faction' && STORAGES[st]?.kind === 'storage';
+	const byKey = new Map(result.nodes.map((n) => [n.key, n]));
+	const hubAt = (n) => (n.kind === 'recipe' ? result.hubFor?.get(n.key) || main : main);
+	const cardsFor = (k) => (k > 0 && fee.card > 0 ? Math.ceil((k * fee.perKg) / fee.card - 1e-9) : 0);
+	const add = (key, deposits, times) => {
+		let s = out.byNode.get(key);
+		if (!s) out.byNode.set(key, (s = { kg: 0, fees: 0, cards: 0, firstRun: null }));
+		if (!s.firstRun) s.firstRun = { kg: deposits.reduce((a, b) => a + b, 0), cards: deposits.reduce((a, k) => a + cardsFor(k), 0) };
+		for (const k of deposits) {
+			if (k <= 0) continue;
+			s.kg += k * times;
+			s.cards += cardsFor(k) * times;
+		}
+	};
+	for (const n of result.nodes) {
+		if (n.kind === 'transfer') {
+			if (!paid(n.dest) || !(n.weight > 0)) continue;
+			const caps = vehicles.map((v) => v.cap);
+			const perRun = caps.reduce((a, b) => a + b, 0);
+			if (!(perRun > 0)) continue;
+			const full = Math.floor(n.weight / perRun);
+			if (full) add(n.key, caps, full);
+			let left = n.weight - full * perRun;
+			if (left > 0) add(n.key, caps.map((c) => { const put = Math.min(c, left); left -= put; return put; }), 1);
+			continue;
+		}
+		if (n.kind !== 'recipe' || n.inStorage || n.recipe.type === 'export' || !n.recipe.outs.length) continue;
+		const r = n.recipe;
+		const outKg = r.outs.reduce((sum, x) => sum + itemWeight(x.id) * x.n, 0) * n.crafts;
+		if (!(outKg > 0)) continue;
+		// Products used by later steps go where that step works from; the rest
+		// (leftovers, kept items) goes into main storage.
+		let toPaid = 0;
+		let toFree = 0;
+		for (const e of result.edges) {
+			if (e.from !== n.key) continue;
+			const t = byKey.get(e.to);
+			if (!t) continue;
+			const dest = t.kind === 'transfer' ? t.src : t.kind === 'recipe' ? hubAt(t) : main;
+			if (paid(dest)) toPaid += itemWeight(e.id) * e.n;
+			else toFree += itemWeight(e.id) * e.n;
+		}
+		const rest = Math.max(0, outKg - toPaid - toFree);
+		const frac = Math.min(1, (toPaid + (paid(main) ? rest : 0)) / outKg);
+		if (!(frac > 0)) continue;
+		const info = nodeRuns(n, vehicles, optimal);
+		if (!info || !(info.runCrafts > 0)) continue;
+		const { inW, outW } = unitWeights(r);
+		const perVehicle = (crafts) =>
+			info.plan.loads(crafts).map((l) =>
+				l.products ? l.products.reduce((sum, x) => sum + itemWeight(x.id) * x.n, 0) * frac : inW > 0 ? l.items.reduce((sum, x) => sum + itemWeight(x.id) * x.n, 0) * (outW / inW) * frac : 0
+			);
+		const full = Math.floor(n.crafts / info.runCrafts);
+		const rem = n.crafts - full * info.runCrafts;
+		if (full) add(n.key, perVehicle(info.runCrafts), full);
+		if (rem > 0) add(n.key, perVehicle(rem), 1);
+	}
+	for (const s of out.byNode.values()) {
+		s.fees = s.kg * fee.perKg;
+		out.kg += s.kg;
+		out.fees += s.fees;
+		out.cards += s.cards;
+	}
+	return out;
 }
 
 // --- Menu actions ---
@@ -3201,6 +3284,9 @@ const DEFAULTS = {
 	viaMain: true,
 	pickupsDirect: true,
 	roundTrips: true,
+	feePerKg: '31.25',
+	cardValue: '25000',
+	useCards: false,
 	factionLoc: '',
 	mainStorage: 'biz_train',
 };
@@ -3523,6 +3609,12 @@ function hubConfig() {
 		viaMain: !!S.settings.viaMain,
 		pickupsDirect: !!S.settings.pickupsDirect,
 		roundTrips: !!S.settings.roundTrips,
+		fee: {
+			perKg: Number(S.settings.feePerKg) || 0,
+			card: Number(S.settings.cardValue) || 25000,
+			useCards: !!S.settings.useCards,
+			main: S.settings.mainStorage || 'biz_train',
+		},
 	};
 }
 
@@ -3585,6 +3677,12 @@ function replan() {
 	const totals = planTotals(S.fullResult, S.vehicles, S.settings.optimal);
 	$('#statRuns').textContent = fmt(totals.runs);
 	$('#statCost').textContent = money(totals.cost);
+	const f = totals.fees;
+	const cards = !!S.settings.useCards;
+	$('#statFeesLabel').textContent = cards ? 'Storage cards' : 'Storage fees';
+	$('#statFees').textContent = cards ? fmt(f.cards) : money(f.fees);
+	$('#statFeesBox').title = `${fmt(Math.round(f.kg))} kg deposited into paid storage: ${money(f.fees)} in fees, or ${fmt(f.cards)} storage card${f.cards === 1 ? '' : 's'} to make it free (one per trunk you empty, plus one for each extra $${fmt(Number(S.settings.cardValue) || 25000)}).` + (cards ? ' Using cards, so the fees are not in Spend.' : ' Included in Spend.');
+	S.fees = f;
 	$('#statRevenue').textContent = money(totals.revenue);
 	renderLeftovers();
 	renderWhereThingsGo();
@@ -4500,7 +4598,9 @@ function renderPinContent() {
 	}
 	if (isMove) {
 		const tr = transferRuns(n, S.vehicles);
-		box.append(h('div', { class: 'pin-summary', text: `${fmt(n.weight)} kg left to move, ${fmt(tr.runs)} run${tr.runs === 1 ? '' : 's'}. For ${[...n.forSteps].join(', ')}.` }));
+		const fs = S.fees?.byNode.get(n.key);
+		const feeText = fs?.firstRun?.kg > 0 ? ` Fee ${money(fs.firstRun.kg * (Number(S.settings.feePerKg) || 0))} or ${fmt(fs.firstRun.cards)} card${fs.firstRun.cards === 1 ? '' : 's'} this run.` : '';
+		box.append(h('div', { class: 'pin-summary', text: `${fmt(n.weight)} kg left to move, ${fmt(tr.runs)} run${tr.runs === 1 ? '' : 's'}. For ${[...n.forSteps].join(', ')}.` + feeText }));
 	}
 	if (collapsed) return;
 
@@ -4571,6 +4671,8 @@ function renderPinContent() {
 			for (const [id, m] of productDests(n.key)) for (const [st, k] of m) byStore.set(st, [...(byStore.get(st) || []), `${fmt(k)} ${itemName(id)}`]);
 			for (const [st, parts] of byStore) lines.push([`Put in ${storageName(st)}`, parts.join(', ')]);
 		}
+		const fs = S.fees?.byNode.get(n.key);
+		if (fs?.firstRun?.kg > 0) lines.push(['Fee', `${money(fs.firstRun.kg * (Number(S.settings.feePerKg) || 0))} or ${fmt(fs.firstRun.cards)} card${fs.firstRun.cards === 1 ? '' : 's'} this run (${fmt(fs.cards)} in total)`]);
 		if (lines.length) box.append(h('div', { class: 'pin-store' }, lines.map(([a, b]) => h('div', {}, h('b', { text: a + ': ' }), h('span', { text: b })))));
 	}
 
