@@ -1641,7 +1641,7 @@ body.overlay .pin-body {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-24c"><span></span>Haul Planner <small class="ver">2026-10-24c</small></h1>
+				<h1 title="Version 2026-10-24f"><span></span>Haul Planner <small class="ver">2026-10-24f</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1773,7 +1773,7 @@ body.overlay .pin-body {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-24c. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-24f. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -2151,7 +2151,7 @@ const LOCATIONS = [
 	L('Trucking: Alta Construction Site', '#9b6bc9', [
 		R('Deliver Asphalt Concrete', 'e', -25000, '5 petrochem_asphalt', '', { p: -1, hm: 5 }),
 		R('Deliver Rebar', 'e', -230000, '1 crafted_rebar', '', { hm: 5 }),
-		R('Deliver Concrete', 'e', -800000, '1 crafted_concrete', '', { hm: 2 }),
+		R('Deliver Concrete', 'e', -400000, '1 crafted_concrete', '', { hm: 2, bonus: [1, 'Concrete Token', 400000] }),
 	]),
 	L('Trucking: Bristols Fuel Storage', '#9b6bc9', [
 		R('Sell Diesel', 'e', -12000, '1 petrochem_diesel', '', { hm: 10 }),
@@ -3403,6 +3403,7 @@ function onGameData(data) {
 	const prevMenuOpen = S.game.menu_open;
 	let storagesChanged = false;
 
+	const prevWeight = S.game.weight;
 	for (const [key, value] of Object.entries(data)) {
 		if (key.startsWith('trigger_')) continue;
 		if (key === 'menu_choices') {
@@ -3436,6 +3437,7 @@ function onGameData(data) {
 	if ('notification' in data) onNotification(String(data.notification || ''));
 	if ('menu_open' in data || 'menu_choices' in data) onMenu(prevMenuOpen);
 	if (storagesChanged) gpsAfterDrop();
+	if ('weight' in data || storagesChanged) gpsAfterSale(prevWeight);
 	if (storagesChanged && S.settings.autoPlan) scheduleReplan();
 	else if (storagesChanged || 'weight' in data || 'max_weight' in data) {
 		renderPin();
@@ -3958,6 +3960,32 @@ function gpsAfterDrop() {
 		const again = stepStops(pinnedNode());
 		const i = again.findIndex((st) => st.pos);
 		if (i >= 0 && S.gpsStop?.key === S.pinned && again[S.gpsStop.i]?.role === 'drop') gpsStop(again, i);
+	}, 600);
+}
+
+// Selling takes the items without any button press, so watch your inventory
+// instead: once it runs out of what the step sells while you're at the sell
+// point, the run is done and the GPS goes back to the first stop.
+function gpsAfterSale(prevWeight) {
+	if (!S.settings.autoGps || S.saleGpsAt > Date.now() - 5000) return;
+	const n = pinnedNode();
+	if (!n || n.kind !== 'recipe' || n.recipe.type !== 'export' || !n.recipe.ins.length || !nearSite()) return;
+	const ids = new Set(n.recipe.ins.map((x) => x.id));
+	const w = Number(S.game.weight);
+	const minW = Math.min(...n.recipe.ins.map((x) => itemWeight(x.id)).filter((x) => x > 0), Infinity);
+	const dropped = Number(prevWeight) > w && Number.isFinite(minW) && w < minW;
+	const inv = S.storages.get('inventory');
+	const invEmpty = !!inv && inv.source === 'game' && Date.now() - inv.updated < 3000 && ![...inv.items].some(([id, k]) => ids.has(id) && k > 0);
+	if (!dropped && !invEmpty) return;
+	// Only once per sale, and only if the GPS isn't already on the first stop.
+	const stops = stepStops(n);
+	const i = stops.findIndex((st) => st.pos);
+	if (i < 0 || stops[i].role === 'site' || (S.gpsStop?.key === S.pinned && S.gpsStop.i === i)) return;
+	S.saleGpsAt = Date.now();
+	setTimeout(() => {
+		const again = stepStops(pinnedNode());
+		const j = again.findIndex((st) => st.pos);
+		if (j >= 0 && pinnedNode()?.recipe?.type === 'export') gpsStop(again, j);
 	}, 600);
 }
 
@@ -4729,8 +4757,9 @@ function carryingNow(relevant) {
 	const wrap = h('div', { class: 'carrying' });
 	for (const { v } of displayOrder()) {
 		const st = S.storages.get(v.id);
-		// Hide weightless items (cards, tokens, unknown extras) unless this step needs them.
-		const items = st ? [...st.items].filter(([id, k]) => k > 0 && (itemWeight(id) > 0 || relevant.has(id))).sort((a, b) => relevant.has(b[0]) - relevant.has(a[0]) || b[1] - a[1]) : [];
+		// In your own inventory, hide weightless items (cards, tokens, unknown
+		// extras) unless this step needs them. Trunks show everything.
+		const items = st ? [...st.items].filter(([id, k]) => k > 0 && (v.id !== 'inventory' || itemWeight(id) > 0 || relevant.has(id))).sort((a, b) => relevant.has(b[0]) - relevant.has(a[0]) || b[1] - a[1]) : [];
 		let used = items.reduce((sum, [id, k]) => sum + itemWeight(id) * k, 0);
 		let cap = v.cap;
 		if (v.id === 'inventory' && Number(S.game.max_weight) > 0) {
@@ -5217,11 +5246,13 @@ function runGoal() {
 			const parts = [`Make and sell ${fmt(e.n)} ${itemName(id)}: ${money(e.revenue)} in sales, minus ${money(e.cost)} in costs, leaves ${money(net)}.`];
 			let tokens = 0;
 			let tokenValue = 0;
+			const tokenNames = new Set();
 			for (const nd of e.res.nodes) if (nd.recipe?.bonus) {
 				tokens += nd.recipe.bonus.n * nd.crafts;
+				tokenNames.add(nd.recipe.bonus.name + 's');
 				tokenValue += nd.recipe.bonus.n * nd.recipe.bonus.value * nd.crafts;
 			}
-			if (tokens) parts.push(`${money(tokenValue)} of that is ${fmt(tokens)} Concrete Delivery Tokens, paid when you deliver them.`);
+			if (tokens) parts.push(`${money(tokenValue)} of that is ${fmt(tokens)} ${[...tokenNames].join(' and ')}, paid when you deliver them.`);
 			if (!withLeftovers && e.leftover > 0) parts.push(`You'll also have ${money(e.leftover)} of leftovers to sell.`);
 			parts.push(`About ${fmt(e.runs)} runs.`);
 			out.textContent = parts.join(' ');
@@ -5456,7 +5487,10 @@ function renderMakeSell(body) {
 
 	const perRun = (e) => (e.runs > 0 ? money(e.profit / (e.effRuns || e.runs)) : '—');
 	const tokenNote = (e) =>
-		(e.res.nodes.some((nd) => nd.recipe?.bonus) ? ' (includes Concrete Delivery Tokens at $2M each, paid on the Concrete Delivery job)' : '') +
+		(() => {
+			const b = [...new Map(e.res.nodes.filter((nd) => nd.recipe?.bonus).map((nd) => [nd.recipe.bonus.name, nd.recipe.bonus])).values()];
+			return b.length ? ` (includes ${b.map((x) => `${x.name}s at ${money(x.value)} each`).join(' and ')}, paid on the delivery job)` : '';
+		})() +
 		(e.leftover > 0 ? `. Includes ${money(e.leftover)} of leftovers: ${leftoverList(e.res.surplus, env.usable).filter((x) => x.value > 0).slice(0, 2).map((x) => `${fmt(x.n)} ${itemName(x.id)}`).join(', ')}` : '');
 	const row = (main, sub, figures, action) =>
 		h('div', { class: 'ms-row' }, h('div', { class: 'ms-main' }, h('div', { class: 'ms-title', text: main }), sub ? h('small', { text: sub }) : null), h('div', { class: 'ms-figs' }, figures), action || null);
