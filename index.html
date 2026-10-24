@@ -1635,17 +1635,61 @@ body.overlay .pin-body {
 #pin .gps-row {
 	margin-top: 4px;
 }
+#pin .tok-edit {
+	display: grid;
+	gap: 4px;
+	margin-top: 4px;
+	font-size: 11.5px;
+}
+
+#pin .tok-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+#pin .tok-row b {
+	min-width: 56px;
+}
+
+#pin .tok-row label {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	color: var(--muted);
+}
+
+#pin .tok-row input {
+	width: 44px;
+	padding: 1px 4px;
+	font-size: 11.5px;
+}
+
+#pin .tok-row input.wide {
+	width: 82px;
+}
+
+#pin .tok-row select {
+	flex: 1 1 100%;
+	font-size: 11.5px;
+}
+
+body.overlay #pin .tok-edit {
+	display: none;
+}
 </style>
 	</head>
 	<body>
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-24f"><span></span>Haul Planner <small class="ver">2026-10-24f</small></h1>
+				<h1 title="Version 2026-10-24g"><span></span>Haul Planner <small class="ver">2026-10-24g</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
 				<button class="btn" id="openUseItems">Use my items</button>
+				<button class="btn" id="openTokens" title="Show your house and concrete tokens on the card, over the game too">Sell Tokens</button>
 				<button class="btn primary" id="refresh" title="Reads all your storages from the TT API (4 requests)">Refresh storages</button>
 				<div class="stats">
 					<div><small>Steps done</small><b id="statSteps">0</b></div>
@@ -1773,7 +1817,7 @@ body.overlay .pin-body {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-24f. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-24g. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -2129,7 +2173,7 @@ const LOCATIONS = [
 		R('Sell CollinsCo Boat Vouchers', 'e', -150000, '10 collinsco_boat_voucher', '', { path: 'CollinsCo Boat Voucher x10', hm: 100, hp: 'CollinsCo Boat Vouchers x1000' }),
 	]),
 	L('House Construction Site', '#9b6bc9', [
-		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'Concrete Delivery Token', 2000000] }),
+		R('House Construction', 'e', -350000, '1 crafted_copperwire, 1 crafted_rebar, 1 crafted_concrete, 2 refined_planks, 4 crafted_ceramictiles, 1 crafted_computer', '', { exp: '1 house', bonus: [1, 'House Token', 2000000] }),
 	]),
 	L('Hunter: Meat Buyer', '#7a8791', [R('Meat Buyer', 'e', -250, '1 meat', '', { hm: 100 })]),
 	L('Illegal: Defib Kit Charging', '#7a8791', [R('Charge Empty Defib Kit', 'r', 5000, '1 e_defibkit', '1 defibkit', { hm: 2 })]),
@@ -3285,6 +3329,12 @@ const DEFAULTS = {
 	pickupsDirect: true,
 	roundTrips: true,
 	feePerKg: '31.25',
+	houseTokenValue: '2000000',
+	concreteTokenValue: '400000',
+	houseTokensPerRun: '10',
+	concreteTokensPerRun: '20',
+	tokenId_house: '',
+	tokenId_concrete: '',
 	cardValue: '25000',
 	useCards: false,
 	factionLoc: '',
@@ -3299,6 +3349,7 @@ const S = {
 	sdOwned: store.get('sdOwned', {}),
 	storages: new Map(),
 	pinned: store.get('pinned', null),
+	tokenMode: !!store.get('tokenMode', false),
 	baseline: store.get('baseline', null),
 	sellPhase: store.get('sellPhase', null),
 	sellInfo: new Map(),
@@ -3638,6 +3689,7 @@ function scheduleReplan() {
 }
 
 function replan() {
+	applyTokenValues();
 	S.vehicles = activeVehicles();
 	const activeIds = new Set(S.vehicles.map((v) => v.id));
 	const pool = S.settings.useStorages
@@ -4564,6 +4616,7 @@ function renderPinContent() {
 	const n = pinnedNode();
 	box.textContent = '';
 	box.append(pinGrip());
+	if (S.tokenMode) return renderTokenCard(box);
 	box.classList.toggle('guide', !n);
 	if (!n) {
 		// Nothing pinned: show how the workflow goes (hidden over gameplay).
@@ -4734,6 +4787,128 @@ function renderPinContent() {
 	box.append(gpsRow(n) || '');
 	if (S.busy) box.append(h('div', { class: 'busy', text: S.busy }));
 	box.append(detailsBlock(n));
+}
+
+// ---------- Sell Tokens ----------
+// House and concrete tokens are paid out on the delivery jobs, a few per
+// run. The card shows what you hold, what it's worth and the runs to sell it.
+const TOKEN_KINDS = [
+	{ kind: 'house', name: 'House Tokens', short: 'House', bonus: 'House Token', valueKey: 'houseTokenValue', perKey: 'houseTokensPerRun', match: (id) => /token/i.test(id) && /house/i.test(id) },
+	{ kind: 'concrete', name: 'Concrete Tokens', short: 'Concrete', bonus: 'Concrete Token', valueKey: 'concreteTokenValue', perKey: 'concreteTokensPerRun', match: (id) => /token/i.test(id) && /concrete/i.test(id) && !/house/i.test(id) },
+];
+
+// The token values also count in every profit figure.
+function applyTokenValues() {
+	for (const r of RECIPES) {
+		const k = r.bonus && TOKEN_KINDS.find((t) => t.bonus === r.bonus.name);
+		if (k) r.bonus.value = Number(S.settings[k.valueKey]) || 0;
+	}
+}
+
+function allStoredIds() {
+	const ids = new Set();
+	for (const st of S.storages.values()) for (const [id, k] of st.items) if (k > 0) ids.add(id);
+	return ids;
+}
+
+function tokenIds(k) {
+	const chosen = S.settings['tokenId_' + k.kind];
+	if (chosen) return [chosen];
+	return [...allStoredIds()].filter(k.match);
+}
+
+function tokenHoldings(k) {
+	const ids = new Set(tokenIds(k));
+	const where = [];
+	let total = 0;
+	for (const st of S.storages.values()) {
+		let n = 0;
+		for (const [id, c] of st.items) if (ids.has(id)) n += c;
+		if (n > 0) {
+			where.push({ name: st.id === 'inventory' ? 'Inv' : STORAGES[st.id]?.cab ? 'MK15' : st.name, n });
+			total += n;
+		}
+	}
+	return { ids: [...ids], total, where };
+}
+
+function renderTokenCard(box) {
+	box.hidden = false;
+	box.classList.remove('guide', 'collapsed');
+	box.style.setProperty('--stripe', '#e0b341');
+	box.append(
+		h(
+			'div',
+			{ class: 'pin-head' },
+			h('div', { class: 'pin-titles' }, h('div', { class: 'where', text: 'Delivery jobs' }), h('div', { class: 'pin-name', text: 'Sell Tokens' })),
+			h('button', { class: 'icon-btn', text: '×', title: 'Back to the pinned step', onclick: () => setTokenMode(false) })
+		)
+	);
+	const rows = TOKEN_KINDS.map((k) => {
+		const hold = tokenHoldings(k);
+		const per = Math.max(0, Math.floor(Number(S.settings[k.perKey]) || 0));
+		const value = Number(S.settings[k.valueKey]) || 0;
+		return { k, hold, per, value, runs: per > 0 ? Math.ceil(hold.total / per) : hold.total ? Infinity : 0 };
+	});
+	const runs = Math.max(0, ...rows.map((r) => r.runs));
+	const worth = rows.reduce((sum, r) => sum + r.hold.total * r.value, 0);
+	const thisRun = rows.reduce((sum, r) => sum + Math.min(r.hold.total, r.per) * r.value, 0);
+	box.append(
+		h('div', { class: 'pin-summary', text: !Number.isFinite(runs) ? 'Set how many sell per run below.' : runs ? `${fmt(runs)} run${runs === 1 ? '' : 's'} left, worth ${money(worth)} in total` : 'No tokens left to sell.' })
+	);
+	box.append(
+		h(
+			'table',
+			{ class: 'pin-table' },
+			h('thead', {}, h('tr', {}, h('th', { text: 'Token' }), h('th', { text: 'Have' }), h('th', { text: 'Per run' }), h('th', { text: 'Worth' }))),
+			h(
+				'tbody',
+				{},
+				rows.map((r) => h('tr', {}, h('td', { text: r.k.short }), h('td', { text: fmt(r.hold.total) }), h('td', { text: fmt(r.per) }), h('td', { text: money(r.hold.total * r.value) }))),
+				h('tr', { class: 'makes' }, h('td', { colspan: '3', class: 'makes-all', text: 'This run: ' + rows.filter((r) => r.hold.total && r.per).map((r) => `${fmt(Math.min(r.hold.total, r.per))} ${r.k.short}`).join(' + ') }), h('td', { text: money(thisRun) }))
+			)
+		)
+	);
+	// Where the tokens are, so you know what to load.
+	const lines = rows.filter((r) => r.hold.where.length).map((r) => h('div', {}, h('b', { text: r.k.short + ': ' }), h('span', { text: r.hold.where.map((w) => `${w.name} ${fmt(w.n)}`).join(', ') })));
+	if (lines.length) box.append(h('div', { class: 'pin-store' }, lines));
+	// Token item not found yet: let the player point at it.
+	const missing = rows.filter((r) => !r.hold.ids.length || S.settings['tokenId_' + r.k.kind]);
+	const known = new Set(Object.keys(ITEMS));
+	const candidates = [...allStoredIds()].filter((id) => !known.has(id) || itemWeight(id) === 0).sort();
+	const edit = h('div', { class: 'tok-edit' });
+	for (const r of rows) {
+		const num = (key, label, step) => {
+			const el = h('input', { type: 'number', min: '0', step, value: S.settings[key], title: label });
+			el.onchange = () => {
+				setSetting(key, el.value.trim());
+				applyTokenValues();
+				replan();
+			};
+			return h('label', {}, h('span', { text: label }), el);
+		};
+		const row = h('div', { class: 'tok-row' }, h('b', { text: r.k.short }), num(r.k.perKey, 'per run', '1'), num(r.k.valueKey, '$', '1000'));
+		row.lastChild.querySelector('input').classList.add('wide');
+		if (missing.includes(r)) {
+			const sel = h('select', { title: 'Which item is the ' + r.k.name.toLowerCase().slice(0, -1) });
+			sel.append(h('option', { value: '', text: 'Find automatically' }));
+			for (const id of candidates) sel.append(h('option', { value: id, text: itemName(id) }));
+			sel.value = S.settings['tokenId_' + r.k.kind] || '';
+			sel.onchange = () => setSetting('tokenId_' + r.k.kind, sel.value);
+			row.append(sel);
+		}
+		edit.append(row);
+	}
+	if (rows.some((r) => !r.hold.ids.length))
+		edit.append(h('p', { class: 'hint', text: 'Some tokens weren’t found. Open the storage or trunk they’re in (or refresh storages), or pick the item from the list.' }));
+	box.append(edit);
+}
+
+function setTokenMode(on) {
+	S.tokenMode = !!on;
+	store.set('tokenMode', S.tokenMode);
+	$('#openTokens').classList.toggle('primary', S.tokenMode);
+	renderPin();
 }
 
 function pill(key, label, title) {
@@ -5604,6 +5779,8 @@ function init() {
 	};
 	$('#openMakeSell').onclick = openMakeSell;
 	$('#openUseItems').onclick = openUseItems;
+	$('#openTokens').onclick = () => setTokenMode(!S.tokenMode);
+	$('#openTokens').classList.toggle('primary', S.tokenMode);
 	setupGoal();
 	refreshLocationPositions();
 	$('#storageSearch').oninput = renderStorages;
