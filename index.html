@@ -1641,7 +1641,7 @@ body.overlay .pin-body {
 		<div id="app">
 			<header id="toolbar">
 				<button class="btn icon" id="toggleSidebar" title="Show or hide settings">☰</button>
-				<h1 title="Version 2026-10-10l"><span></span>Haul Planner <small class="ver">2026-10-10l</small></h1>
+				<h1 title="Version 2026-10-24b"><span></span>Haul Planner <small class="ver">2026-10-24b</small></h1>
 				<button class="btn" id="openStorages">Storages</button>
 				<button class="btn" id="openRecipes">Recipes</button>
 				<button class="btn" id="openMakeSell">Make &amp; Sell</button>
@@ -1721,6 +1721,7 @@ body.overlay .pin-body {
 						<div class="row"><label for="mainStorage">Keep everything else in</label><select id="mainStorage" data-setting="mainStorage"></select></div>
 						<label class="toggle"><input type="checkbox" data-setting="viaMain" /><span>Things made elsewhere go into main storage first, then get moved to faction storage</span></label>
 						<label class="toggle sub"><input type="checkbox" data-setting="pickupsDirect" /><span>Except pickups, which go straight to faction storage</span></label>
+						<label class="toggle"><input type="checkbox" data-setting="roundTrips" /><span>Round trips: if a faction-location step’s items all come from main storage, load them there, craft on site and bring the products straight back (no faction storage, no move steps)</span></label>
 					</div>
 				</details>
 
@@ -1768,7 +1769,7 @@ body.overlay .pin-body {
 					<summary>Activity</summary>
 					<div class="section">
 						<pre id="log"></pre>
-						<p class="hint">Version 2026-10-10l. If an update doesn't show in-game, reload the latest version.</p>
+						<p class="hint">Version 2026-10-24b. If an update doesn't show in-game, reload the latest version.</p>
 						<button class="btn" id="reloadLatest">Reload latest version</button>
 						<button class="btn" id="clearMarker">Remove old map marker</button>
 						<button class="btn danger" id="resetAll">Reset everything</button>
@@ -2594,12 +2595,39 @@ function solve(targets, storages, opts) {
 // Crafting at factionLoc keeps its items in faction storage; everything else
 // lives in mainStorage (e.g. the train network). Items that have to move
 // between storages get a "Move items" step, one per destination step.
+// Faction storage can craft straight from its own contents, in one go, up
+// to what the storage holds.
+const FACTION_CAP = 575000;
+
 function applyHubs(result, hubs) {
+	for (const n of result.nodes) if (n.kind === 'recipe') delete n.inStorage;
 	if (!hubs || !hubs.enabled) return result;
 	const fLoc = hubs.factionLoc || null;
 	const main = hubs.mainStorage || 'biz_train';
 	const byKey = new Map(result.nodes.map((n) => [n.key, n]));
-	const hubAt = (loc) => (fLoc && loc === fLoc ? 'faction' : main);
+	// Which storage each step at the faction location works from. With round
+	// trips on, a step only uses faction storage when it is chained to other
+	// steps there (or to pickups or items already in faction storage). Otherwise
+	// you load at main storage, craft on site and bring the products straight
+	// back, so nothing needs moving in or out of faction storage.
+	const atF = (n) => !!(n && n.kind === 'recipe' && fLoc && n.recipe.loc === fLoc);
+	const hubFor = new Map();
+	for (const n of result.nodes) {
+		if (!atF(n)) continue;
+		let fac = !hubs.roundTrips;
+		for (const e of result.edges) {
+			if (fac) break;
+			if (e.to === n.key) {
+				const f = byKey.get(e.from);
+				if (atF(f) || (f?.kind === 'storage' && f.storageId === 'faction') || (f?.kind === 'recipe' && hubs.pickupsDirect && !f.recipe.ins.length)) fac = true;
+			} else if (e.from === n.key && atF(byKey.get(e.to))) fac = true;
+		}
+		hubFor.set(n.key, fac ? 'faction' : main);
+		// Crafted from faction storage: no driving for the step itself, only
+		// the moves that bring its items in and take its products out.
+		if (fac) n.inStorage = true;
+	}
+	const hubAt = (n) => (n.kind === 'recipe' ? hubFor.get(n.key) || main : main);
 	// Items already in a trunk or your inventory travel with you.
 	const carried = (sid) => {
 		const st = STORAGES[sid];
@@ -2631,10 +2659,10 @@ function applyHubs(result, hubs) {
 	for (const e of result.edges) {
 		const from = byKey.get(e.from);
 		const to = byKey.get(e.to);
-		const dest = to.kind === 'recipe' ? hubAt(to.recipe.loc) : main;
+		const dest = hubAt(to);
 		let src = null;
 		if (from.kind === 'storage') src = carried(from.storageId) ? null : from.storageId;
-		else if (from.kind === 'recipe' && fLoc && from.recipe.loc === fLoc) src = 'faction';
+		else if (atF(from)) src = hubAt(from);
 		// Made elsewhere: it goes into main storage first, so faction-storage
 		// steps need a move to bring it in (pickups can go straight there).
 		else if (from.kind === 'recipe' && hubs.viaMain && !(hubs.pickupsDirect && !from.recipe.ins.length)) src = main;
@@ -2658,7 +2686,7 @@ function applyHubs(result, hubs) {
 		link(e.from, key, e.id, e.n);
 		link(key, e.to, e.id, e.n);
 	}
-	return { ...result, nodes, edges: [...edges.values()] };
+	return { ...result, nodes, edges: [...edges.values()], hubFor };
 }
 
 // Runs for a "Move items" step, and what goes in each vehicle on the first run.
@@ -2765,6 +2793,13 @@ function loadPlan(r, vehicles, optimal) {
 function nodeRuns(nd, vehicles, optimal) {
 	if (nd.kind !== 'recipe') return null;
 	const plan = loadPlan(nd.recipe, vehicles, optimal);
+	if (nd.inStorage) {
+		const r = nd.recipe;
+		const w = Math.max(...[r.ins, r.outs].map((xs) => xs.reduce((sum, x) => sum + itemWeight(x.id) * x.n, 0)));
+		const perGo = w > 0 ? Math.max(1, Math.floor(FACTION_CAP / w)) : Infinity;
+		const goes = perGo === Infinity ? 1 : Math.ceil(nd.crafts / perGo);
+		return { plan, runs: 0, storage: true, goes, runCrafts: Math.min(nd.crafts, perGo), loads: [] };
+	}
 	const runs = plan.perRun === Infinity ? 1 : plan.perRun > 0 ? Math.ceil(nd.crafts / plan.perRun) : Infinity;
 	const runCrafts = plan.perRun === Infinity ? nd.crafts : Math.min(nd.crafts, plan.perRun);
 	return { plan, runs, runCrafts, loads: plan.loads(runCrafts) };
@@ -3165,6 +3200,7 @@ const DEFAULTS = {
 	showMoves: true,
 	viaMain: true,
 	pickupsDirect: true,
+	roundTrips: true,
 	factionLoc: '',
 	mainStorage: 'biz_train',
 };
@@ -3486,6 +3522,7 @@ function hubConfig() {
 		mainStorage: S.settings.mainStorage || 'biz_train',
 		viaMain: !!S.settings.viaMain,
 		pickupsDirect: !!S.settings.pickupsDirect,
+		roundTrips: !!S.settings.roundTrips,
 	};
 }
 
@@ -3760,7 +3797,7 @@ function stepStops(n) {
 	const site = { role: 'site', label: locShort(r.loc), pos: recipePos(r), loc: r.loc };
 	const stops = [];
 	if (r.ins.length && S.settings.hubsOn) {
-		const st = hubOf(r.loc);
+		const st = hubOf(r.loc, n.key);
 		stops.push({ role: 'load', label: storageName(st), pos: storagePos(st, here() || site.pos) });
 	}
 	stops.push(site);
@@ -3858,7 +3895,9 @@ function gpsRow(n) {
 // ---------- Where things go ----------
 // Which storage a step's ingredients come from, and where its products
 // should be put, following the storage setup.
-function hubOf(loc) {
+function hubOf(loc, key) {
+	const set = key && S.settings.hubsOn ? S.fullResult?.hubFor?.get(key) : null;
+	if (set) return set;
 	const f = S.settings.factionLoc;
 	return f && loc === f ? 'faction' : S.settings.mainStorage || 'biz_train';
 }
@@ -3878,7 +3917,7 @@ function productDests(key) {
 		if (e.from !== key) continue;
 		const t = byKey.get(e.to);
 		if (!t) continue;
-		const dest = t.kind === 'transfer' ? t.src : t.kind === 'recipe' ? hubOf(t.recipe.loc) : S.settings.mainStorage || 'biz_train';
+		const dest = t.kind === 'transfer' ? t.src : t.kind === 'recipe' ? hubOf(t.recipe.loc, t.key) : S.settings.mainStorage || 'biz_train';
 		if (!out.has(e.id)) out.set(e.id, new Map());
 		out.get(e.id).set(dest, (out.get(e.id).get(dest) || 0) + e.n);
 	}
@@ -4045,7 +4084,9 @@ function cardFor(n) {
 			{ class: 'head' },
 			h('span', { class: 'step', text: String(num) }),
 			h('div', { class: 'titles' }, h('div', { class: 'where', text: locShort(r.loc) }, r.sd ? h('span', { class: 'sd-tag', title: 'SD card: ' + r.sd, text: 'SD' }) : null), h('div', { class: 'what', text: r.name })),
-			h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs}×` : '!' , title: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'Too heavy for your vehicles' })
+			info.storage
+				? h('span', { class: 'plate', text: '0×', title: `Crafted from faction storage, no driving (${info.goes} go${info.goes === 1 ? '' : 'es'})` })
+				: h('span', { class: 'plate', text: Number.isFinite(info.runs) ? `${info.runs}×` : '!' , title: Number.isFinite(info.runs) ? `${info.runs} run${info.runs === 1 ? '' : 's'}` : 'Too heavy for your vehicles' })
 		)
 	);
 	const list = h('ul');
@@ -4055,7 +4096,8 @@ function cardFor(n) {
 	const sold = n.target && r.exp ? S.sellInfo.get(r.exp.id) : null;
 	if (sold) list.append(h('li', {}, h('span', { text: 'Done' }), h('span', { class: 'money-in', text: `${fmt(sold.sold)} of ${fmt(sold.of)}` })));
 	const [field, items] = r.ins.length ? ['items', r.ins] : ['products', r.outs];
-	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: splitText(info.loads, x.id, field) })));
+	for (const x of items) list.append(h('li', {}, h('span', { text: itemName(x.id) }), h('span', { text: info.storage ? fmt(x.n * n.crafts) + 'x' : splitText(info.loads, x.id, field) })));
+	if (info.storage) list.append(h('li', { class: 'from-storage' }, h('span', { text: 'Craft from Faction Storage' })));
 	card.append(list);
 	const dests = r.type === 'export' ? [] : destSummary(n.key);
 	if (dests.length) card.append(h('div', { class: 'store-to', title: 'Where to put what this step makes' }, '→ ' + dests.map(storageName).join(', ')));
@@ -4450,7 +4492,9 @@ function renderPinContent() {
 	);
 
 	if (isRecipe) {
-		const runsText = Number.isFinite(info.runs) ? `${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : 'too heavy for your vehicles';
+		const runsText = info.storage
+			? `craft from Faction Storage, no driving${info.goes > 1 ? ` (${info.goes} goes of ${fmt(info.runCrafts)})` : ''}`
+			: Number.isFinite(info.runs) ? `${fmt(info.runs)} run${info.runs === 1 ? '' : 's'}` : 'too heavy for your vehicles';
 		const sold = n.target && r.exp ? S.sellInfo.get(r.exp.id) : null;
 		box.append(h('div', { class: 'pin-summary', text: (sold ? `Done ${fmt(sold.sold)} of ${fmt(sold.of)}. ` : '') + `${fmt(n.crafts)} crafts left, ${runsText}` + (info.runs > 1 ? `, ${fmt(info.runCrafts)} this run` : '') }));
 	}
@@ -4506,11 +4550,11 @@ function renderPinContent() {
 	const table = h(
 		'table',
 		{ class: 'pin-table' },
-		h('thead', {}, h('tr', {}, h('th', { text: r.ins.length ? 'Load' : 'Collect' }), h('th', { text: order.join('/'), title: 'This run, split across your vehicles' }), h('th', { text: 'Left' }))),
+		h('thead', {}, h('tr', {}, h('th', { text: info.storage ? 'Uses' : r.ins.length ? 'Load' : 'Collect' }), h('th', { text: info.storage ? 'This go' : order.join('/'), title: info.storage ? 'Crafted straight from faction storage' : 'This run, split across your vehicles' }), h('th', { text: 'Left' }))),
 		h(
 			'tbody',
 			{},
-			items.map((x) => h('tr', {}, h('td', { text: itemName(x.id) }), h('td', { text: splitText(info.loads, x.id, field) }), h('td', { text: fmt(x.n * n.crafts) }))),
+			items.map((x) => h('tr', {}, h('td', { text: itemName(x.id) }), h('td', { text: info.storage ? fmt(x.n * info.runCrafts) + 'x' : splitText(info.loads, x.id, field) }), h('td', { text: fmt(x.n * n.crafts) }))),
 			r.ins.length && r.outs.length + (r.bonus ? 1 : 0) === 1 ? r.outs.map((x) => h('tr', { class: 'makes' }, h('td', { colspan: '2', text: 'Makes ' + itemName(x.id) }), h('td', { text: fmt(x.n * n.crafts) }))) : null,
 			r.ins.length && r.outs.length + (r.bonus ? 1 : 0) > 1
 				? h('tr', { class: 'makes' }, h('td', { colspan: '3', class: 'makes-all', text: 'Makes ' + [...r.outs.map((x) => `${fmt(x.n * n.crafts)} ${itemName(x.id)}`), ...(r.bonus ? [`${fmt(r.bonus.n * n.crafts)} ${r.bonus.name}`] : [])].join(', ') }))
@@ -4521,7 +4565,7 @@ function renderPinContent() {
 	box.append(table);
 	if (hubsActive()) {
 		const lines = [];
-		if (r.ins.length) lines.push(['Take from', storageName(hubOf(r.loc))]);
+		if (r.ins.length) lines.push(['Take from', storageName(hubOf(r.loc, n.key))]);
 		if (r.type !== 'export') {
 			const byStore = new Map();
 			for (const [id, m] of productDests(n.key)) for (const [st, k] of m) byStore.set(st, [...(byStore.get(st) || []), `${fmt(k)} ${itemName(id)}`]);
@@ -4548,7 +4592,7 @@ function renderPinContent() {
 			h(
 				'div',
 				{ class: 'pin-actions' },
-				r.ins.length
+				r.ins.length && !info.storage
 					? h('button', { class: 'btn small primary', text: 'Load this run', title: `At a storage with its menu open: ${S.settings.dumpFirst ? 'empties your trunks, then ' : ''}loads the amounts above`, disabled: !!S.busy, onclick: loadPinned })
 					: null,
 				h('button', { class: 'btn small', text: 'Empty trunks', title: 'At a storage with its menu open', disabled: !!S.busy, onclick: dumpTrunks }),
@@ -4735,6 +4779,7 @@ function loadPinned() {
 	const n = pinnedNode();
 	if (!n || (n.kind !== 'recipe' && n.kind !== 'transfer')) return notify('Pin a step first.');
 	const info = n.kind === 'transfer' ? transferRuns(n, S.vehicles) : nodeRuns(n, S.vehicles, S.settings.optimal);
+	if (info.storage) return notify('This step crafts straight from Faction Storage, so there is nothing to load.');
 	const actions = S.settings.dumpFirst ? loadedTrunks().map(dumpAction) : [];
 	for (const load of info.loads) {
 		const v = S.vehicles[load.vehicle];
